@@ -1,14 +1,13 @@
 Ext.define('MobileJudge.view.settings.Terms', {
     extend: 'Ext.form.Panel',
-    xtype: 'panel',
-    //fullscreen: true,
-    //renderTo: Ext.getBody(),
+    //xtype: 'panel',
     alias: 'widget.terms',
-
+    reference: 'termForm',
+    modelValidation: true,
     requires: [
         'Ext.form.FieldSet',
         'Ext.field.Select',
-	'Ext.field.Text',
+        'Ext.field.Text',
         'Ext.field.Number'
     ],
 
@@ -17,65 +16,90 @@ Ext.define('MobileJudge.view.settings.Terms', {
         title: 'Select a Term',
         layout: 'vbox',
         items: [{
-                xtype: 'selectfield',
-                label: 'Select Term',
-                options: [{
-                    text: 'Fall 2017',
-                    value: 'first'
-                }, {
-                    text: 'Second Option',
-                    value: 'second'
-                }, {
-                    text: 'Third Option',
-                    value: 'third'
-                }]
-            }, {
-                xtype: 'button',
-                text: 'New',
-                iconCls: 'x-fa fa-edit',
-                ui: 'action'
-            }, {
-                xtype: 'button',
-                text: 'Save',
-                iconCls: 'x-fa fa-save',
-                ui: 'confirm'
-            }, {
-                xtype: 'button',
-                text: 'Delete',
-                iconCls: 'x-fa fa-remove',
-                ui: 'decline'
+            xtype: 'selectfield',
+            label: 'Select Term',
+            labelWidth: 150,
+            reference: 'termSelector',
+            displayField: 'name',
+            valueField: 'id',
+            bind: {
+                store: '{terms}',
+                disabled: '{status.canSave}'
             }
+        }, {
+            xtype: 'button',
+            text: 'New',
+            iconCls: 'x-fa fa-edit',
+            ui: 'action',
+            // bind: {
+            //     disabled: '{!status.canCreate}'
+            // },
+            handler: 'onNewTermClick'
+        }, {
+            xtype: 'button',
+            text: 'Save',
+            iconCls: 'x-fa fa-save',
+            ui: 'confirm',
+            //bind: {
+            //    disabled: '{!status.canSave}'
+            //},
+            handler: 'onSaveTermClick'
+        }, {
+            xtype: 'button',
+            text: 'Delete',
+            iconCls: 'x-fa fa-remove',
+            ui: 'decline',
+            //bind: {
+            //    disabled: '{!status.canDelete}'
+            //},
+            handler: 'onDeleteTermClick'
+        }, {
+            xtype: 'button',
+            text: 'Make Active',
+            ui: 'action',
+            iconCls: 'x-fa fa-calendar-check-o',
+            handler: 'onMakeActiveTerm',
+            bind: {
+                hidden: '{selectedTerm.active}'
+                //disabled: '{status.canSave}'
+            }
+        }
 
         ]
     }, {
         xtype: 'fieldset',
         title: 'Selected Term',
         items: [{
-                xtype: 'textfield',
-                label: 'Name',
-		labelWidth: 150
-            }, {
-                xtype: 'checkboxfield',
-                label: 'Is Active?',
-                labelWidth: 150
-
-            }, {
-                xtype: 'checkboxfield',
-                label: 'Judge Login?',
-                labelWidth: 150
-            }, {
-                xtype: 'checkboxfield',
-                label: 'Stud. Grades?',
-                labelWidth: 150
-            }, {
-                xtype: 'numberfield',
-                label: 'Stud. per Judge',
-                labelWidth: 150
-            }, {
-                xtype: 'numberfield',
-                label: 'Display Order',
-                labelWidth: 150
-            }
+            xtype: 'textfield',
+            label: 'Name',
+            labelWidth: 150,
+            bind: '{selectedTerm.name}'
+        }, {
+            xtype: 'checkboxfield',
+            label: 'IsActive?',
+            labelWidth: 150,
+            bind: '{selectedTerm.active}'
+        }, {
+            xtype: 'checkboxfield',
+            label: 'Judge Login?',
+            labelWidth: 150,
+            bind: '{selectedTerm.allowJudgeLogin}'
+        }, {
+            xtype: 'checkboxfield',
+            label: 'Stud. Grades?',
+            labelWidth: 150,
+            bind: '{selectedTerm.showGrades}'
+        }, {
+            xtype: 'numberfield',
+            label: 'Stud. per Judge',
+            labelWidth: 150,
+            bind: '{selectedTerm.studentsPerJudge}'
+        }, {
+            xtype: 'numberfield',
+            label: 'Display Order',
+            labelWidth: 150,
+            bind: '{selectedTerm.display}'
+        }
 
         ]
     }, {
@@ -86,82 +110,90 @@ Ext.define('MobileJudge.view.settings.Terms', {
             labelWidth: 100
         },
         items: [{
-            label: 'Url'
+            label: 'Url',
+            bind: '{selectedTerm.srProjectUrl}'
         }, {
-            label: 'Token'
+            label: 'Token',
+            bind: '{selectedTerm.srProjectToken}'
         }, {
-            label: 'Live Url'
+            label: 'Live Url',
+            bind: '{selectedTerm.liveUrl}'
         }, {
-            label: 'Dev. Url'
+            label: 'Dev. Url',
+            bind: '{selectedTerm.developmentUrl}'
         }, {
-            label: 'No Prof. Img Url'
+            label: 'No Prof. Img Url',
+            bind: '{selectedTerm.noProfileImageUrl}'
         }]
 
     }, {
         xtype: 'fieldset',
         title: 'Email Settings',
-	defaults: {
-		labelWidth: 150
-	},
+        defaults: {
+            labelWidth: 150
+        },
         items: [{
-                xtype: 'textfield',
-                label: 'From'
-                    //placeHolder: 'Masoud Sadjadi <sadjadi@cs.fiu.edu>'
-            }, {
-                xtype: 'selectfield',
-                label: 'Reset Pass.',
-                options: [{
-                        text: 'Forgot Password'
-                            //value:
-                    }
-
-                ]
-            }, {
-                xtype: 'selectfield',
-                label: 'Confirm Reg.',
-                options: [{
-                        text: 'Registration Confirmation for Judges'
-                            //value:
-                    }
-
-                ]
-            }, {
-                xtype: 'selectfield',
-                label: 'Confirm Reg.',
-                options: [{
-                        text: 'Acceptance Confirmation for Judges'
-                            //value:
-                    }
-
-                ]
-            }, {
-                xtype: 'selectfield',
-                label: 'Reject Template',
-                options: [{
-                        text: 'Judge Reject Invite'
-                            //value:
-                    }
-
-                ]
-            }, {
-                xtype: 'selectfield',
-                label: 'Acpt. Template',
-                options: [{
-                        text: 'Judge Accept Invite'
-                            //value:
-                    }
-
-                ]
-            }, {
-                xtype: 'selectfield',
-                label: 'Remv. Template',
-                options: [{
-                        text: 'Judge Remove Invite'
-                            //value:
-                    }
-
-                ]
+            xtype: 'textfield',
+            label: 'From',
+            bind: '{selectedTerm.mailFrom}'
+        }, {
+            xtype: 'selectfield',
+            label: 'Reset Pass.',
+            displayField: 'name',
+            valueField: 'id',
+            bind: {
+                store: 'templates4Term',
+                value: '{selectedTerm.resetPasswordTemplate}'
             }
+        }, {
+            xtype: 'selectfield',
+            label: 'Confirm Reg.',
+            displayField: 'name',
+            valueField: 'id',
+            bind: {
+                store: 'templates4Term',
+                value: '{selectedTerm.confirmTemplate}'
+            }
+
+        }, //{
+            //xtype: 'selectfield',
+            //label: 'Confirm Acpt.',
+            //displayField: 'name',
+            //valueField: 'id',
+            //bind: {
+            //    store: 'templates4Term',
+            //    value: '{selectedTerm.acceptanceConfirmation}'
+            //}
+        //}, 
+	{
+            xtype: 'selectfield',
+            label: 'Reject Template',
+            displayField: 'name',
+            valueField: 'id',
+            bind: {
+                store: 'templates4Term',
+                value: '{selectedTerm.rejectInviteTemplate}'
+            }
+        }, {
+            xtype: 'selectfield',
+            label: 'Acpt. Template',
+            displayField: 'name',
+            valueField: 'id',
+            bind: {
+                store: 'templates4Term',
+                value: '{selectedTerm.acceptInviteTemplate}'
+            }
+
+        }, {
+            xtype: 'selectfield',
+            label: 'Remv. Template',
+            displayField: 'name',
+            valueField: 'id',
+            bind: {
+                store: 'templates4Term',
+                value: '{selectedTerm.removeInviteTemplate}'
+            }
+        }
 
         ]
     }, {
@@ -169,27 +201,34 @@ Ext.define('MobileJudge.view.settings.Terms', {
         title: 'Event Info',
         layout: 'vbox',
         defaultType: 'textfield',
-	defaults: {
-	    labelWidth: 150
-	},
+        defaults: {
+            labelWidth: 150
+        },
         items: [{
-            label: 'Start Date'
+            label: 'Start Date',
+            bind: '{selectedTerm.startDate}'
         }, {
-            label: 'Start Time'
+            label: 'Start Time',
+            bind: '{selectedTerm.startTime}'
         }, {
-            label: 'End Date'
+            label: 'End Date',
+            bind: '{selectedTerm.endDate}'
         }, {
-            label: 'End Time'
+            label: 'End Time',
+            bind: '{selectedTerm.endTime}'
         }, {
-            label: 'Deadline Date'
+            label: 'Deadline Date',
+            bind: '{selectedTerm.deadlineDate}'
         }, {
-            label: 'Deadline Time'
+            label: 'Deadline Time',
+            bind: '{selectedTerm.deadlineTime}'
         }, {
-            label: 'Place'
+            label: 'Place',
+            bind: '{selectedTerm.location}'
         }, {
-            label: 'Map Url'
+            label: 'Map Url',
+            bind: '{selectedTerm.mapImageUrl}'
         }]
     }]
 
 });
-

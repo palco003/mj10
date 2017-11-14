@@ -1,23 +1,31 @@
 Ext.define('MobileJudge.view.settings.Index', {
-	extend: 'Ext.tab.Panel',
-	alias: 'widget.settings',
+    extend: 'Ext.tab.Panel',
+    alias: 'widget.settings',
 
-	controller: 'settings',
-	viewModel: {
-		type: 'settings'
-	},
 
-	cls: 'shadow',
-	activeTab: 0,
-	margin: 20,
+    controller: 'settings',
+    viewModel: {
+        type: 'settings'
+    },
 
-	items: [
-		{
-			xtype: 'terms'
-		}
-//,
-		//{
-		//	xtype: 'questions'
-		//}
-	]
+    cls: 'shadow',
+    activeTab: 0,
+    margin: 20,
+
+    items: [
+        {
+
+            xtype: 'terms',
+            title: 'Terms',
+            iconCls: ''
+
+        },
+        {
+            xtype: 'questions',
+            title: 'Questions',
+            iconCls: ''
+
+        }
+    ]
 });
+
