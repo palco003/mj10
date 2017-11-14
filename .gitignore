@@ -1,4 +1,7 @@
-dev/
-oauthd/node_modules/
-oauthd/plugins/
+node_modules/
+oauthd/
 api/node_modules/
+oauthd/node_modules/
+oauth/plugins/
+dev/build/
+.idea/
