@@ -52,22 +52,57 @@ module.exports = function(server, db) {
 				var email = ret[0], term = ret[1];
 				if (email == null || email.termId != term.id) return next(new notFound('Invalid invite id'));
 
-				db.user.findById(email.userId).then(function (user) {
+				/*db.user.findById(email.userId).then(function (user) {
 					if (user.state <= 2) setState(user, 4);
-
 					var script = '<script type="text/javascript">' +
 						'localStorage.setItem("userId", ' + JSON.stringify(user.id) + ');' +
 						'localStorage.setItem("email", ' + JSON.stringify(user.email) +');' +
 						(user.fullName ? 'localStorage.setItem("userName", ' + JSON.stringify(user.fullName) +');' : 'localStorage.removeItem("userName");') +
 						'window.location.replace("' + config.registerRedirect + '");' +
 					'</script>';
-
 					res.html(response
 							.replace(/\[\[subject\]\]/, 'Please wait...')
 							.replace(/\[\[body\]\]/, script));
 					next();
 					db.touch(email);
+				});*/
+				//**************************************************************************************
+				db.template.getPreview(email.userId, term.acceptInviteTemplate).then(function(render) {
+                                        if (render == null) return next(new notFound());
+
+                                        res.html(response
+                                                        .replace(/\[\[subject\]\]/, render[0])
+                                                        .replace(/\[\[body\]\]/, render[1]));
+                                        next();
+                                });
+				db.touch(email);
+
+                                db.user.findById(email.userId).then(function (user) {
+                                        if (user.state > 4 && user.state < 12) undoRegistration(user);
+                                        setState(user, 4);
+
+					db.email.create({
+						address: user.email,
+						userId: user.id,
+						termId: term.id,
+						templateId: term.acceptanceConfirmation		
+					}).then(function(mail){
+						mail.render().then(function(render) {
+							mailer.sendMail({
+								from: term.mailFrom,
+								to: render.address,
+								subject: render.subject,
+								html: render.body
+							}, _.noop);
+						});
+					});
 				});
+                                //db.touch(email);
+
+				
+				//**************************************************************************************
+
+
 			});
 	});
 
