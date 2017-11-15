@@ -24,14 +24,14 @@ Ext.define('MobileJudge.view.grade.GradeJudgeDetailWizard', {
     cls: 'wizardone',
     layout: 'card',
     listeners: {
-        close: "updateMainStore"
+        close: "updateJudgeMainStore"
     },
 
     loadData: function(record) {
         var ctrl = this.getController();
 
         $("#nameLabel").text(record.data.fullName);
-        ctrl.loadSecondViewData(record.data);
+        ctrl.loadJudgeSecondViewData(record.data);
 
     },
 
@@ -77,7 +77,7 @@ Ext.define('MobileJudge.view.grade.GradeJudgeDetailWizard', {
                 ]
             },
             {
-                id: 'detailAllButton',
+                id: 'detailAllJudgeButton',
                 xtype: 'image',
                 src: '/resources/images/icons/RedYellowGreen.ico',
                 width: 40,
@@ -86,7 +86,7 @@ Ext.define('MobileJudge.view.grade.GradeJudgeDetailWizard', {
                 hideable: false,
                 listeners: {
                     el: {
-                        click: 'globalSecondViewStatus'
+                        click: 'globalJudgeSecondViewStatus'
                     }
                 },
                 tooltip: '',
@@ -129,7 +129,7 @@ Ext.define('MobileJudge.view.grade.JudgeGradeView', {
         {
             xtype: 'gridcolumn',
             text: 'Student',
-            dataIndex: 'judgeName',
+            dataIndex: 'student',
             flex: 2,
             width:120
         },
@@ -163,7 +163,7 @@ Ext.define('MobileJudge.view.grade.JudgeGradeView', {
                 {
                     icon: '/resources/images/icons/Green.ico',
                     tooltip: 'Status',
-                    handler: 'changeStatusSecondView'
+                    handler: 'changeStatusJudgeSecondView'
                 }
             ],
             renderer: function (value, metadata, record) {

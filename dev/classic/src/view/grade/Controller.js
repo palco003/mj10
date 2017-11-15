@@ -142,7 +142,7 @@ Ext.define('MobileJudge.view.grade.Controller', {
             url: '/api/judges_grade_view/' + id,
             success: function () {
                 store.load();
-                me.changeIcon();
+                me.changeJudgeIcon();
             },
             failure: this.updateError,
             jsonData: data,
@@ -202,6 +202,24 @@ Ext.define('MobileJudge.view.grade.Controller', {
         });
     },
 
+        loadJudgeSecondViewData: function (data) {
+        var me = this;
+        Ext.Ajax.request({
+            url: '/api/judge_second_view',
+            success: function (response) {
+                var data = JSON.parse(response.responseText)
+                Ext.getStore('judgeDetailData').loadData(data);
+                var average = me.getAverage(data);
+
+                me.changeIconJudgeSecondView();
+            },
+            failure: this.updateError,
+            jsonData: data,
+            disableCaching: true,
+            method: 'POST'
+        });
+    },
+
     loadThirdViewData: function (data) {
         var me = this;
         Ext.Ajax.request({
@@ -244,7 +262,7 @@ Ext.define('MobileJudge.view.grade.Controller', {
             data.push(tempObj);
 
             if(store.data.items[rowIndex].data.accepted && !store.data.items[rowIndex].data.rejected && !store.data.items[rowIndex].data.pending)
-                status = "Rejected";
+                status = "Rejected"
             else if(!store.data.items[rowIndex].data.accepted && store.data.items[rowIndex].data.rejected && !store.data.items[rowIndex].data.pending)
                 status = "Pending";
             else if(!store.data.items[rowIndex].data.accepted && !store.data.items[rowIndex].data.rejected && store.data.items[rowIndex].data.pending)
@@ -284,6 +302,70 @@ Ext.define('MobileJudge.view.grade.Controller', {
             url: '/api/second_view_save',
             success: function(){
                 me.loadSecondViewData(data[0]);
+            },
+            failure: this.updateError,
+            jsonData :sendData,
+            disableCaching:true,
+            method:'PUT'
+        });
+
+    },
+
+        changeStatusJudgeSecondView: function(grid, rowIndex, colIndex){
+        var me = this;
+        var store = Ext.getStore('judgeDetailData'), status;
+        var data = [];
+        var changeTo = Ext.getCmp('detailAllJudgeButton').tooltip;
+        var tempObj;
+
+        if(!isNaN(rowIndex)){
+            tempObj = {
+                studentId: store.data.items[rowIndex].data.studentId,
+                judgeId: store.data.items[rowIndex].data.judgeId
+            };
+            data.push(tempObj);
+
+            if(store.data.items[rowIndex].data.accepted && !store.data.items[rowIndex].data.rejected && !store.data.items[rowIndex].data.pending)
+                status = "Rejected"
+            else if(!store.data.items[rowIndex].data.accepted && store.data.items[rowIndex].data.rejected && !store.data.items[rowIndex].data.pending)
+                status = "Pending";
+            else if(!store.data.items[rowIndex].data.accepted && !store.data.items[rowIndex].data.rejected && store.data.items[rowIndex].data.pending)
+                status = "Accepted";
+            else
+                status = "Accepted";
+        }
+        else{
+            if(changeTo ==='Accept-All'){
+                status = 'Accepted';
+                Ext.getCmp('detailAllJudgeButton').tooltip = 'Reject-All';
+            }
+            else if(changeTo ==='Pending-All'){
+                status = 'Pending';
+                Ext.getCmp('detailAllJudgeButton').tooltip = 'Accept-All';
+            }
+            else{
+                status = 'Rejected';
+                Ext.getCmp('detailAllJudgeButton').tooltip = 'Pending-All';
+            }
+
+            store.data.items.forEach(function(item){
+                tempObj = {
+                    studentId: item.data.studentId,
+                    judgeId: item.data.judgeId
+                };
+                data.push(tempObj);
+            })
+        }
+
+        var sendData = {
+            data: data,
+            state: status
+        };
+
+        Ext.Ajax.request({
+            url: '/api/judge_second_view_save',
+            success: function(){
+                me.loadJudgeSecondViewData(data[0]);
             },
             failure: this.updateError,
             jsonData :sendData,
@@ -438,6 +520,91 @@ Ext.define('MobileJudge.view.grade.Controller', {
 
     },
 
+    globalJudgeSecondViewStatus: function (grid, rowIndex, colIndex) {
+        var me = this;
+        var store = Ext.getStore('judgeDetailData'), status;
+        var data = [];
+        var changeTo = Ext.getCmp('detailAllJudgeButton').tooltip;
+        var tempObj;
+        var choice = '';
+        Ext.Msg.show({
+            title: 'Global Grade Change',
+            msg: 'Which change would you like to perform?',
+            width: 400,
+            closable: true,
+            buttons: Ext.Msg.YESNOCANCEL,
+            buttonText: {
+                ok: 'Accept-All',
+                yes: 'Pending-All',
+                no: 'Reject-All',
+                cancel: 'Cancel'
+            },
+            fn: function (buttonValue, inputText, showConfig) {
+
+                if (buttonValue == 'ok') {
+                    choice = 'Accept-All';
+                }
+                else if (buttonValue == 'yes') {
+                    choice = 'Pending-All';
+                }
+                else if (buttonValue == 'no') {
+                    choice = 'Reject-All';
+                }
+                else {
+                    choice = 'cancel';
+                }
+
+                if (choice != 'cancel') {
+
+                    Ext.getCmp('detailAllJudgeButton').tooltip = choice;
+
+                    changeTo = choice;
+
+                    if (changeTo === 'Accept-All') {
+                        status = 'Accepted';
+                    }
+                    else if (changeTo === 'Pending-All') {
+                        status = 'Pending';
+                    }
+                    else {
+                        status = 'Rejected';
+                    }
+
+                    store.data.items.forEach(function (item) {
+                        tempObj = {
+                            judgeId: item.data.judgeId,
+                            studentId: item.data.studentId
+                            
+                        };
+                        data.push(tempObj);
+                    })
+
+                    var sendData = {
+                        data: data,
+                        state: status
+                    };
+
+                    Ext.Ajax.request({
+                        url: '/api/judge_second_view_save',
+                        success: function () {
+                            me.loadJudgeSecondViewData(data[0]);
+                        },
+                        failure: this.updateError,
+                        jsonData: sendData,
+                        disableCaching: true,
+                        method: 'PUT'
+                    });
+                }
+
+
+            }
+        });
+
+
+
+    },
+
+
     globalThirdViewStatus: function (grid, rowIndex, colIndex) {
         var me = this;
         var store = Ext.getStore('judgeGrades'), status;
@@ -529,6 +696,13 @@ Ext.define('MobileJudge.view.grade.Controller', {
         mainStore.load();
     }
     ,
+        updateJudgeMainStore: function () {
+        var me = this;
+        var mainStore = Ext.getStore('judgegradesview');
+        me.changeJudgeIcon();
+        mainStore.load();
+    }
+    ,
 
     onStatesLoaded: function (store, records) {
         var filter = store.getStoreId().replace(/States/, 'Filter');
@@ -578,7 +752,48 @@ Ext.define('MobileJudge.view.grade.Controller', {
         })
     }
     ,
+    changeJudgeIcon: function () {
+        var me = this;
+        var items;
 
+        if (me.status === null || !me.status)
+            items = Ext.getStore('judgegradesview').data.items;
+        else
+            items = [{data: {accepted: me.status}}];
+
+        var green = false;
+        var yellow = false;
+        var red = false;
+
+        items.forEach(function (item) {
+            if (item.data.accepted == true) {
+                Ext.getCmp('topIcon').setSrc('/resources/images/icons/Green.ico');
+                green = true;
+            }
+            if (item.data.pending == true) {
+                Ext.getCmp('topIcon').setSrc('/resources/images/icons/Yellow.ico');
+                yellow = true
+            }
+            if (item.data.rejected == true) {
+                Ext.getCmp('topIcon').setSrc('/resources/images/icons/Red.ico');
+                red = true;
+            }
+
+            if (green && yellow) {
+                Ext.getCmp('topIcon').setSrc('/resources/images/icons/YellowGreen.ico');
+            }
+            if (green && red) {
+                Ext.getCmp('topIcon').setSrc('/resources/images/icons/RedGreen.ico');
+            }
+            if (red && yellow) {
+                Ext.getCmp('topIcon').setSrc('/resources/images/icons/RedYellow.ico');
+            }
+            if (red && yellow && green) {
+                Ext.getCmp('topIcon').setSrc('/resources/images/icons/RedYellowGreen.ico');
+            }
+        })
+    }
+    ,
     changeIconSecondView: function () {
         var me = this;
         var items;
@@ -621,6 +836,49 @@ Ext.define('MobileJudge.view.grade.Controller', {
         })
     }
     ,
+
+    changeIconJudgeSecondView: function () {
+        var me = this;
+        var items;
+
+        if (me.status === null || !me.status)
+            items = Ext.getStore('judgeDetailData').data.items;
+        else
+            items = [{data: {accepted: me.status}}];
+
+        var green = false;
+        var yellow = false;
+        var red = false;
+
+        items.forEach(function (item) {
+            if (item.data.accepted == true) {
+                Ext.getCmp('detailAllJudgeButton').setSrc('/resources/images/icons/Green.ico');
+                green = true;
+            }
+            if (item.data.pending == true) {
+                Ext.getCmp('detailAllJudgeButton').setSrc('/resources/images/icons/Yellow.ico');
+                yellow = true
+            }
+            if (item.data.rejected == true) {
+                Ext.getCmp('detailAllJudgeButton').setSrc('/resources/images/icons/Red.ico');
+                red = true;
+            }
+
+            if (green && yellow) {
+                Ext.getCmp('detailAllJudgeButton').setSrc('/resources/images/icons/YellowGreen.ico');
+            }
+            if (green && red) {
+                Ext.getCmp('detailAllJudgeButton').setSrc('/resources/images/icons/RedGreen.ico');
+            }
+            if (red && yellow) {
+                Ext.getCmp('detailAllJudgeButton').setSrc('/resources/images/icons/RedYellow.ico');
+            }
+            if (red && yellow && green) {
+                Ext.getCmp('detailAllJudgeButton').setSrc('/resources/images/icons/RedYellowGreen.ico');
+            }
+        })
+    }
+,
 
     changeIconThirdView: function () {
         var me = this;

@@ -30,13 +30,6 @@ module.exports = function(server, db) {
 			pagination: false,
 			endpoints: [apiPrefix + '/codes/admins', apiPrefix + '/codes/admins/:id']
 		}),
-        unreg = epilogue.resource({
-            model: db.code,
-            excludeAttributes: ['createdAt', 'updatedAt'],
-            actions: ['read','list'],
-            pagination: false,
-            endpoints: [apiPrefix + '/codes/unreg', apiPrefix + '/codes/unreg/:id']
-        }),
 		filterByType = epilogue.resource({
 			model: db.code,
 			excludeAttributes: ['createdAt', 'updatedAt'],
@@ -57,10 +50,6 @@ module.exports = function(server, db) {
 		list: { fetch: { before: createFilter({type: 'states', abbr: { $like: '1%' }}) } },
 		read: { fetch: { before: createFilter({type: 'states', abbr: { $like: '1%' }}) } },
 	});
-    unreg.use({
-        list: { fetch: { before: createFilter({type: 'states', abbr: { $like: '4%' }}) } },
-        read: { fetch: { before: createFilter({type: 'states', abbr: { $like: '4%' }}) } },
-    });
 	filterByType.use({
 		list: { fetch: { before: createFilter() } },
 		read: { fetch: { before: createFilter() } }
@@ -71,7 +60,6 @@ module.exports = function(server, db) {
 		students: students,
 		judges: judges,
 		admins: admins,
-		unreg: unreg,
 		all: epilogue.resource({
 			model: db.code,
 			excludeAttributes: ['createdAt','updatedAt'],
