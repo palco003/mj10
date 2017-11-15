@@ -91,11 +91,21 @@ module.exports = function(sequelize, DataTypes) {
 			allowNull: false,
 			defaultValue: 3
 		},
+		acceptanceConfirmation: {
+			type: DataTypes.INTEGER(3),
+			allowNull: false,
+			defaultValue: 3
+		},
 		rejectInviteTemplate: {
 			type: DataTypes.INTEGER(3),
 			allowNull: false,
 			defaultValue: 3
 		},
+		acceptInviteTemplate: {
+                        type: DataTypes.INTEGER(3),
+                        allowNull: false,
+                        defaultValue: 3
+                },
 		removeInviteTemplate: {
 			type: DataTypes.INTEGER(3),
 			allowNull: false,

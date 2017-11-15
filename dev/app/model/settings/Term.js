@@ -29,7 +29,9 @@ Ext.define('MobileJudge.model.settings.Term', {
 		{ name: 'mailFrom',             type: 'string',  defaultValue: 'Masoud Sadjadi <sadjadi@cs.fiu.edu>' },
 		{ name: 'resetPasswordTemplate',type: 'int',     defaultValue: 3,     convert: null },
 		{ name: 'confirmTemplate',      type: 'int',     defaultValue: 38,     convert: null },
+		{ name: 'acceptanceConfirmation', type: 'int',    defaultValue: 73,     convert: null },
 		{ name: 'rejectInviteTemplate', type: 'int',     defaultValue: 36,     convert: null },
+		{ name: 'acceptInviteTemplate', type: 'int',     defaultValue: 71,     convert: null },
 		{ name: 'removeInviteTemplate', type: 'int',     defaultValue: 37,     convert: null },
 
 		{ name: 'startDate',    type: 'date', depends: 'start',    persist: false, convert: function(v, r) { return r.setDate('start',    v); } },
@@ -62,7 +64,9 @@ Ext.define('MobileJudge.model.settings.Term', {
 		],
 		resetPasswordTemplate: 'presence',
 		confirmTemplate: 'presence',
+		acceptanceConfirmation: 'presence',
 		rejectInviteTemplate: 'presence',
+		acceptInviteTemplate: 'presence',
 		removeInviteTemplate: 'presence'
 	},
 
