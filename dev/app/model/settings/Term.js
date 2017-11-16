@@ -30,12 +30,18 @@ Ext.define('MobileJudge.model.settings.Term', {
 		{ name: 'resetPasswordTemplate',type: 'int',     defaultValue: 3,     convert: null },
 		{ name: 'confirmTemplate',      type: 'int',     defaultValue: 38,     convert: null },
 <<<<<<< HEAD
+<<<<<<< HEAD
 		{ name: 'acceptanceConfirmation', type: 'int',    defaultValue: 73,     convert: null },
 		{ name: 'rejectInviteTemplate', type: 'int',     defaultValue: 36,     convert: null },
 		{ name: 'acceptInviteTemplate', type: 'int',     defaultValue: 71,     convert: null },
 =======
 		{ name: 'rejectInviteTemplate', type: 'int',     defaultValue: 36,     convert: null },
 >>>>>>> b4d4eb2f8b51bc3dc3b390db4f0548e4a1c8c84f
+=======
+		{ name: 'acceptanceConfirmation', type: 'int',    defaultValue: 73,     convert: null },
+		{ name: 'rejectInviteTemplate', type: 'int',     defaultValue: 36,     convert: null },
+		{ name: 'acceptInviteTemplate', type: 'int',     defaultValue: 71,     convert: null },
+>>>>>>> 57c573111bc8ac58e4d3b6be1aff92a294172f70
 		{ name: 'removeInviteTemplate', type: 'int',     defaultValue: 37,     convert: null },
 
 		{ name: 'startDate',    type: 'date', depends: 'start',    persist: false, convert: function(v, r) { return r.setDate('start',    v); } },
@@ -69,12 +75,18 @@ Ext.define('MobileJudge.model.settings.Term', {
 		resetPasswordTemplate: 'presence',
 		confirmTemplate: 'presence',
 <<<<<<< HEAD
+<<<<<<< HEAD
 		acceptanceConfirmation: 'presence',
 		rejectInviteTemplate: 'presence',
 		acceptInviteTemplate: 'presence',
 =======
 		rejectInviteTemplate: 'presence',
 >>>>>>> b4d4eb2f8b51bc3dc3b390db4f0548e4a1c8c84f
+=======
+		acceptanceConfirmation: 'presence',
+		rejectInviteTemplate: 'presence',
+		acceptInviteTemplate: 'presence',
+>>>>>>> 57c573111bc8ac58e4d3b6be1aff92a294172f70
 		removeInviteTemplate: 'presence'
 	},
 
