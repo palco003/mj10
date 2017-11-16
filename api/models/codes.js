@@ -34,7 +34,8 @@ module.exports = function(sequelize, DataTypes) {
 			//providers:  { where: { type: 'providers' } },
 			students:   { where: { type: 'states', abbr: { $like: '1%' } } },
 			judges:     { where: { type: 'states', abbr: { $like: '2%' } } },
-			admins:     { where: { type: 'states', abbr: { $like: '3%' } } }
+			admins:     { where: { type: 'states', abbr: { $like: '3%' } } },
+			unregs:     { where: { type: 'states', abbr: { $like: '4%' } } }
 		}
 	});
 };

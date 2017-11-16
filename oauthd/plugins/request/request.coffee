@@ -15,7 +15,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 async = require 'async'
-qs = require 'querystring'
+qs = require 'qs'
 Url = require 'url'
 restify = require 'restify'
 request = require 'request'
@@ -188,7 +188,7 @@ module.exports = (env) ->
 
 
 		# request's endpoints
-		env.server.opts new RegExp('^' + env.config.base + '/request/([a-zA-Z0-9_\\.~-]+)/(.*)$'), (req, res, next) ->
+		env.server.opts new RegExp('^/request/([a-zA-Z0-9_\\.~-]+)/(.*)$'), (req, res, next) ->
 			origin = null
 			ref = fixUrl(req.headers['referer'] || req.headers['origin'] || "http://localhost");
 			urlinfos = Url.parse(ref)
@@ -205,9 +205,9 @@ module.exports = (env) ->
 			res.send 200
 			next false
 
-		env.server.get new RegExp('^' + env.config.base + '/request/([a-zA-Z0-9_\\.~-]+)/(.*)$'), middlewares_request_chain, doRequest
-		env.server.post new RegExp('^' + env.config.base + '/request/([a-zA-Z0-9_\\.~-]+)/(.*)$'), middlewares_request_chain, doRequest
-		env.server.put new RegExp('^' + env.config.base + '/request/([a-zA-Z0-9_\\.~-]+)/(.*)$'), middlewares_request_chain, doRequest
-		env.server.patch new RegExp('^' + env.config.base + '/request/([a-zA-Z0-9_\\.~-]+)/(.*)$'), middlewares_request_chain, doRequest
-		env.server.del new RegExp('^' + env.config.base + '/request/([a-zA-Z0-9_\\.~-]+)/(.*)$'), middlewares_request_chain, doRequest
+		env.server.get new RegExp('^/request/([a-zA-Z0-9_\\.~-]+)/(.*)$'), middlewares_request_chain, doRequest
+		env.server.post new RegExp('^/request/([a-zA-Z0-9_\\.~-]+)/(.*)$'), middlewares_request_chain, doRequest
+		env.server.put new RegExp('^/request/([a-zA-Z0-9_\\.~-]+)/(.*)$'), middlewares_request_chain, doRequest
+		env.server.patch new RegExp('^/request/([a-zA-Z0-9_\\.~-]+)/(.*)$'), middlewares_request_chain, doRequest
+		env.server.del new RegExp('^/request/([a-zA-Z0-9_\\.~-]+)/(.*)$'), middlewares_request_chain, doRequest
 	exp

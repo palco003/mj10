@@ -9,6 +9,7 @@ module.exports = function(server, db) {
 	server.post(apiPrefix + '/login', function (req, res, next) {
 		if (req.body === undefined
 			|| (req.body.email === undefined && req.body.id === undefined)
+			//|| (req.body.email === undefined && req.body.fullName === undefined) //???????
 			|| (req.body.password === undefined && req.body.provider === undefined)) {
 			return next(new badRequest('Missing username and/or password'));
 		}
@@ -46,13 +47,14 @@ module.exports = function(server, db) {
 			db.student.findOne({ where: search }),
 			db.judge.findOne({ where: search }),
 			db.user.scope('admins').findOne({ where: search }),
+			db.user.scope('unregs').findOne({ where: search }),
 			db.term.getActiveTerm()
 		])
 		.then(function(arr){
 			var term = arr.pop(),
 				index = _.findLastIndex(arr);
 
-			if (index < 0 || index > 2 ||
+			if (index < 0 || index > 3 ||
 			   (provider === 'local' && (!password || !arr[index].password))) return invalidCredentials();
 
 			(provider !== 'local' ? Promise.resolve(true)
@@ -89,6 +91,12 @@ module.exports = function(server, db) {
 							case 2: // admin
 								if (user.state != 13) return invalidCredentials();
 								break;
+							//*************************************************************************************************************************
+			                               case 3: // UnregJudge
+                           				       // if (!term.allowJudgeLogin) return errorResponse('The login for judges has not yet been activated by the admin. Please try again during the event.');
+								if (user.state != 13) return invalidCredentials();
+                                		       		break;
+							//************************************************************************************************************************
 						}
 
 						res.json({
