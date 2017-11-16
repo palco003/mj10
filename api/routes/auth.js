@@ -9,7 +9,10 @@ module.exports = function(server, db) {
 	server.post(apiPrefix + '/login', function (req, res, next) {
 		if (req.body === undefined
 			|| (req.body.email === undefined && req.body.id === undefined)
+<<<<<<< HEAD
 			//|| (req.body.email === undefined && req.body.fullName === undefined) //???????
+=======
+>>>>>>> b4d4eb2f8b51bc3dc3b390db4f0548e4a1c8c84f
 			|| (req.body.password === undefined && req.body.provider === undefined)) {
 			return next(new badRequest('Missing username and/or password'));
 		}
@@ -47,7 +50,10 @@ module.exports = function(server, db) {
 			db.student.findOne({ where: search }),
 			db.judge.findOne({ where: search }),
 			db.user.scope('admins').findOne({ where: search }),
+<<<<<<< HEAD
 			db.user.scope('unregs').findOne({ where: search }),
+=======
+>>>>>>> b4d4eb2f8b51bc3dc3b390db4f0548e4a1c8c84f
 			db.term.getActiveTerm()
 		])
 		.then(function(arr){

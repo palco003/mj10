@@ -203,6 +203,7 @@ Ext.define('MobileJudge.view.settings.Terms', {
 					fieldLabel: 'Confirm Registration',
 					bind: {
 						store: 'templates4Term',
+<<<<<<< HEAD
 						value: '{selectedTerm.acceptanceConfirmation}'
 					}
 				},
@@ -226,6 +227,18 @@ Ext.define('MobileJudge.view.settings.Terms', {
 					emptyText: 'Select a Template',
 					displayField: 'name',
 					valueField: 'id',
+=======
+						value: '{selectedTerm.confirmTemplate}'
+					}
+				},
+				{
+                                        xtype: 'combobox',
+                                        queryMode: 'local',
+                                        editable: false,
+                                        emptyText: 'Select a Template',
+                                        displayField: 'name',
+                                        valueField: 'id',
+>>>>>>> b4d4eb2f8b51bc3dc3b390db4f0548e4a1c8c84f
 					fieldLabel: 'Reject Template',
 					bind: {
 						store: 'templates4Term',
@@ -239,6 +252,7 @@ Ext.define('MobileJudge.view.settings.Terms', {
                                         emptyText: 'Select a Template',
                                         displayField: 'name',
                                         valueField: 'id',
+<<<<<<< HEAD
                                         fieldLabel: 'Accept Invite Template',
                                         bind: {
                                                 store: 'templates4Term',
@@ -252,6 +266,8 @@ Ext.define('MobileJudge.view.settings.Terms', {
 					emptyText: 'Select a Template',
 					displayField: 'name',
 					valueField: 'id',
+=======
+>>>>>>> b4d4eb2f8b51bc3dc3b390db4f0548e4a1c8c84f
 					fieldLabel: 'Remove Template',
 					bind: {
 						store: 'templates4Term',

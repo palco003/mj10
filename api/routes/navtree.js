@@ -121,15 +121,26 @@ module.exports = function(server, db) {
                         {
                             text: 'Home',
                             iconCls: 'x-fa fa-home',
+<<<<<<< HEAD
                             viewType: 'unreghome',
+=======
+                            viewType: 'studenthome',
+>>>>>>> b4d4eb2f8b51bc3dc3b390db4f0548e4a1c8c84f
                             routeId: 'home', // routeId defaults to viewType
                             leaf: true
                         },
                         {
+<<<<<<< HEAD
                             text: 'Unregistered Judges',
                             iconCls: 'x-fa fa-group',
                             //viewType: 'unregistered',
                             routeId: 'unregistered',
+=======
+                            text: 'Event Map',
+                            iconCls: 'x-fa fa-map-marker',
+                            viewType: 'eventmap',
+                            routeId: 'map',
+>>>>>>> b4d4eb2f8b51bc3dc3b390db4f0548e4a1c8c84f
                             leaf: true
                         }
                     ]
