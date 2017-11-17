@@ -121,15 +121,15 @@ module.exports = function(server, db) {
                         {
                             text: 'Home',
                             iconCls: 'x-fa fa-home',
-                            viewType: 'studenthome',
+                            viewType: 'unreghome',
                             routeId: 'home', // routeId defaults to viewType
                             leaf: true
                         },
                         {
-                            text: 'Event Map',
-                            iconCls: 'x-fa fa-map-marker',
-                            viewType: 'eventmap',
-                            routeId: 'map',
+                            text: 'Unregistered Judges',
+                            iconCls: 'x-fa fa-group',
+                            //viewType: 'unregistered',
+                            routeId: 'unregistered',
                             leaf: true
                         }
                     ]

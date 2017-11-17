@@ -22,6 +22,7 @@ Ext.define('MobileJudge.view.people.Students', {
             items: [
                 {
                     xtype: 'dataview',
+                    itemSelector: '.stateSelector checkbox',
                     tpl: [
 
                         '<tpl>',

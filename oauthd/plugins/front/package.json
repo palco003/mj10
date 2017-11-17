@@ -1,0 +1,22 @@
+{
+  "name": "front",
+  "version": "1.0.1",
+  "description": "",
+  "main": "Gruntfile.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "restify": "^4.3.0",
+    "grunt-browserify": "^5.0.0",
+    "grunt-contrib-coffee": "^1.0.0",
+    "grunt-contrib-copy": "^1.0.0",
+    "grunt-contrib-less": "^1.4.0"
+  },
+  "dependencies": {
+    "async": "^1.4.2",
+    "q": "^1.4.1"
+  }
+}
