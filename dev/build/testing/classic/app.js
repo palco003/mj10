@@ -41336,6 +41336,316 @@ Ext.define('Ext.overrides.dom.Helper', function() {
     return node;
   }};
 }());
+Ext.define('Ext.data.identifier.Uuid', {extend:Ext.data.identifier.Generator, alias:'data.identifier.uuid', isUnique:true, config:{id:null}, constructor:function(config) {
+  this.callParent([config]);
+  this.reconfigure(config);
+}, reconfigure:function(config) {
+  var cls = this.self;
+  this.generate = config && config.version === 1 ? cls.createSequential(config.salt, config.timestamp, config.clockSeq) : cls.createRandom();
+}, clone:null, statics:{createRandom:function() {
+  var pattern = 'xxxxxxxx-xxxx-4xxx-Rxxx-xMxxxxxxxxxx'.split(''), hex = '0123456789abcdef'.split(''), length = pattern.length, parts = [];
+  return function() {
+    for (var r, c, i = 0; i < length; ++i) {
+      c = pattern[i];
+      if (c !== '-' && c !== '4') {
+        r = Math.random() * 16;
+        r = c === 'R' ? r & 3 | 8 : r | (c === 'M' ? 1 : 0);
+        c = hex[r];
+      }
+      parts[i] = c;
+    }
+    return parts.join('');
+  };
+}, createSequential:function(salt, time, clockSeq) {
+  var parts = [], twoPow32 = Math.pow(2, 32), saltLo = salt.lo, saltHi = salt.hi, timeLo = time.lo, timeHi = time.hi, toHex = function(value, length) {
+    var ret = value.toString(16).toLowerCase();
+    if (ret.length > length) {
+      ret = ret.substring(ret.length - length);
+    } else {
+      if (ret.length < length) {
+        ret = Ext.String.leftPad(ret, length, '0');
+      }
+    }
+    return ret;
+  };
+  if (typeof salt === 'number') {
+    saltHi = Math.floor(salt / twoPow32);
+    saltLo = Math.floor(salt - saltHi * twoPow32);
+  }
+  if (typeof time === 'number') {
+    timeHi = Math.floor(time / twoPow32);
+    timeLo = Math.floor(time - timeHi * twoPow32);
+  }
+  saltHi |= 256;
+  parts[3] = toHex(128 | clockSeq >>> 8 & 63, 2) + toHex(clockSeq & 255, 2);
+  parts[4] = toHex(saltHi, 4) + toHex(saltLo, 8);
+  return function() {
+    parts[0] = toHex(timeLo, 8);
+    parts[1] = toHex(timeHi & 65535, 4);
+    parts[2] = toHex(timeHi >>> 16 & 4095 | 1 << 12, 4);
+    ++timeLo;
+    if (timeLo >= twoPow32) {
+      timeLo = 0;
+      ++timeHi;
+    }
+    return parts.join('-');
+  };
+}}}, function() {
+  this.Global = new this({id:'uuid'});
+});
+Ext.define('Ext.data.proxy.WebStorage', {extend:Ext.data.proxy.Client, alternateClassName:'Ext.data.WebStorageProxy', config:{id:undefined}, constructor:function(config) {
+  this.callParent(arguments);
+  this.cache = {};
+  if (this.getStorageObject() === undefined) {
+    Ext.raise('Local Storage is not supported in this browser, please use another type of data proxy');
+  }
+  if (this.getId() === undefined) {
+    Ext.raise('No unique id was provided to the local storage proxy. See Ext.data.proxy.LocalStorage documentation for details');
+  }
+  this.initialize();
+}, create:function(operation) {
+  var me = this, records = operation.getRecords(), length = records.length, ids = me.getIds(), id, record, i, identifier;
+  if (me.isHierarchical === undefined) {
+    me.isHierarchical = !!records[0].isNode;
+    if (me.isHierarchical) {
+      me.getStorageObject().setItem(me.getTreeKey(), true);
+    }
+  }
+  for (i = 0; i < length; i++) {
+    record = records[i];
+    if (record.phantom) {
+      record.phantom = false;
+      identifier = record.identifier;
+      if (identifier && identifier.isUnique) {
+        id = record.getId();
+      } else {
+        id = me.getNextId();
+      }
+    } else {
+      id = record.getId();
+    }
+    me.setRecord(record, id);
+    record.commit();
+    ids.push(id);
+  }
+  me.setIds(ids);
+  operation.setSuccessful(true);
+}, read:function(operation) {
+  var me = this, allRecords, records = [], success = true, Model = me.getModel(), validCount = 0, recordCreator = operation.getRecordCreator(), filters, sorters, limit, filterLen, valid, record, ids, length, data, id, i, j;
+  if (me.isHierarchical) {
+    records = me.getTreeData();
+  } else {
+    ids = me.getIds();
+    length = ids.length;
+    id = operation.getId();
+    if (id) {
+      data = me.getRecord(id);
+      if (data !== null) {
+        record = recordCreator ? recordCreator(data, Model) : new Model(data);
+      }
+      if (record) {
+        records.push(record);
+      } else {
+        success = false;
+      }
+    } else {
+      sorters = operation.getSorters();
+      filters = operation.getFilters();
+      limit = operation.getLimit();
+      allRecords = [];
+      for (i = 0; i < length; i++) {
+        data = me.getRecord(ids[i]);
+        record = recordCreator ? recordCreator(data, Model) : new Model(data);
+        allRecords.push(record);
+      }
+      if (sorters) {
+        Ext.Array.sort(allRecords, Ext.util.Sorter.createComparator(sorters));
+      }
+      for (i = operation.getStart() || 0; i < length; i++) {
+        record = allRecords[i];
+        valid = true;
+        if (filters) {
+          for (j = 0, filterLen = filters.length; j < filterLen; j++) {
+            valid = filters[j].filter(record);
+          }
+        }
+        if (valid) {
+          records.push(record);
+          validCount++;
+        }
+        if (limit && validCount === limit) {
+          break;
+        }
+      }
+    }
+  }
+  if (success) {
+    operation.setResultSet(new Ext.data.ResultSet({records:records, total:records.length, loaded:true}));
+    operation.setSuccessful(true);
+  } else {
+    operation.setException('Unable to load records');
+  }
+}, update:function(operation) {
+  var records = operation.getRecords(), length = records.length, ids = this.getIds(), record, id, i;
+  for (i = 0; i < length; i++) {
+    record = records[i];
+    this.setRecord(record);
+    record.commit();
+    id = record.getId();
+    if (id !== undefined && Ext.Array.indexOf(ids, id) === -1) {
+      ids.push(id);
+    }
+  }
+  this.setIds(ids);
+  operation.setSuccessful(true);
+}, erase:function(operation) {
+  var me = this, records = operation.getRecords(), ids = me.getIds(), idLength = ids.length, newIds = [], removedHash = {}, i = records.length, id;
+  for (; i--;) {
+    Ext.apply(removedHash, me.removeRecord(records[i]));
+  }
+  for (i = 0; i < idLength; i++) {
+    id = ids[i];
+    if (!removedHash[id]) {
+      newIds.push(id);
+    }
+  }
+  me.setIds(newIds);
+  operation.setSuccessful(true);
+}, getRecord:function(id) {
+  var me = this, cache = me.cache, data = !cache[id] ? Ext.decode(me.getStorageObject().getItem(me.getRecordKey(id))) : cache[id];
+  if (!data) {
+    return null;
+  }
+  cache[id] = data;
+  data[me.getModel().prototype.idProperty] = id;
+  return Ext.merge({}, data);
+}, setRecord:function(record, id) {
+  if (id) {
+    record.set('id', id, {commit:true});
+  } else {
+    id = record.getId();
+  }
+  var me = this, rawData = record.getData(), data = {}, model = me.getModel(), fields = model.getFields(), length = fields.length, i = 0, field, name, obj, key;
+  for (; i < length; i++) {
+    field = fields[i];
+    name = field.name;
+    if (field.persist) {
+      data[name] = rawData[name];
+    }
+  }
+  delete data[model.prototype.idProperty];
+  if (record.isNode && record.get('depth') === 1) {
+    delete data.parentId;
+  }
+  obj = me.getStorageObject();
+  key = me.getRecordKey(id);
+  me.cache[id] = data;
+  obj.removeItem(key);
+  obj.setItem(key, Ext.encode(data));
+}, removeRecord:function(record) {
+  var me = this, id = record.getId(), records = {}, i, childNodes;
+  records[id] = record;
+  me.getStorageObject().removeItem(me.getRecordKey(id));
+  delete me.cache[id];
+  if (record.childNodes) {
+    childNodes = record.childNodes;
+    for (i = childNodes.length; i--;) {
+      Ext.apply(records, me.removeRecord(childNodes[i]));
+    }
+  }
+  return records;
+}, getRecordKey:function(id) {
+  if (id.isModel) {
+    id = id.getId();
+  }
+  return Ext.String.format('{0}-{1}', this.getId(), id);
+}, getRecordCounterKey:function() {
+  return Ext.String.format('{0}-counter', this.getId());
+}, getTreeKey:function() {
+  return Ext.String.format('{0}-tree', this.getId());
+}, getIds:function() {
+  var me = this, ids = (me.getStorageObject().getItem(me.getId()) || '').split(','), length = ids.length, isString = this.getIdField().isStringField, i;
+  if (length === 1 && ids[0] === '') {
+    ids = [];
+  } else {
+    for (i = 0; i < length; i++) {
+      ids[i] = isString ? ids[i] : +ids[i];
+    }
+  }
+  return ids;
+}, getIdField:function() {
+  return this.getModel().prototype.idField;
+}, setIds:function(ids) {
+  var obj = this.getStorageObject(), str = ids.join(','), id = this.getId();
+  obj.removeItem(id);
+  if (!Ext.isEmpty(str)) {
+    obj.setItem(id, str);
+  }
+}, getNextId:function() {
+  var me = this, obj = me.getStorageObject(), key = me.getRecordCounterKey(), isString = me.getIdField().isStringField, id;
+  id = me.idGenerator.generate();
+  obj.setItem(key, id);
+  if (isString) {
+    id = id + '';
+  }
+  return id;
+}, getTreeData:function() {
+  var me = this, ids = me.getIds(), length = ids.length, records = [], recordHash = {}, root = [], i = 0, Model = me.getModel(), idProperty = Model.prototype.idProperty, rootLength, record, parent, parentId, children, id;
+  for (; i < length; i++) {
+    id = ids[i];
+    record = me.getRecord(id);
+    records.push(record);
+    recordHash[id] = record;
+    if (!record.parentId) {
+      root.push(record);
+    }
+  }
+  rootLength = root.length;
+  Ext.Array.sort(records, me.sortByParentId);
+  for (i = rootLength; i < length; i++) {
+    record = records[i];
+    parentId = record.parentId;
+    if (!parent || parent[idProperty] !== parentId) {
+      parent = recordHash[parentId];
+      parent.children = children = [];
+    }
+    children.push(record);
+  }
+  for (i = length; i--;) {
+    record = records[i];
+    if (!record.children && !record.leaf) {
+      record.loaded = true;
+    }
+  }
+  for (i = rootLength; i--;) {
+    record = root[i];
+    root[i] = new Model(record);
+  }
+  return root;
+}, sortByParentId:function(node1, node2) {
+  return (node1.parentId || 0) - (node2.parentId || 0);
+}, initialize:function() {
+  var me = this, storageObject = me.getStorageObject(), lastId = +storageObject.getItem(me.getRecordCounterKey()), id = me.getId();
+  storageObject.setItem(id, storageObject.getItem(id) || '');
+  if (storageObject.getItem(me.getTreeKey())) {
+    me.isHierarchical = true;
+  }
+  me.idGenerator = new Ext.data.identifier.Sequential({seed:lastId ? lastId + 1 : 1});
+}, clear:function() {
+  var me = this, obj = me.getStorageObject(), ids = me.getIds(), len = ids.length, i;
+  for (i = 0; i < len; i++) {
+    obj.removeItem(me.getRecordKey(ids[i]));
+  }
+  obj.removeItem(me.getRecordCounterKey());
+  obj.removeItem(me.getTreeKey());
+  obj.removeItem(me.getId());
+  me.cache = {};
+}, getStorageObject:function() {
+  Ext.raise('The getStorageObject function has not been defined in your Ext.data.proxy.WebStorage subclass');
+}});
+Ext.define('Ext.data.proxy.LocalStorage', {extend:Ext.data.proxy.WebStorage, alias:'proxy.localstorage', alternateClassName:'Ext.data.LocalStorageProxy', getStorageObject:function() {
+  return window.localStorage;
+}});
 Ext.define('Ext.data.proxy.Rest', {extend:Ext.data.proxy.Ajax, alternateClassName:'Ext.data.RestProxy', alias:'proxy.rest', defaultActionMethods:{create:'POST', read:'GET', update:'PUT', destroy:'DELETE'}, slashRe:/\/$/, periodRe:/\.$/, config:{appendId:true, format:null, batchActions:false, actionMethods:{create:'POST', read:'GET', update:'PUT', destroy:'DELETE'}}, buildUrl:function(request) {
   var me = this, operation = request.getOperation(), records = operation.getRecords(), record = records ? records[0] : null, format = me.getFormat(), url = me.getUrl(request), id, params;
   if (record && !record.phantom) {
@@ -47674,6 +47984,241 @@ Ext.define('Ext.button.Split', {extend:Ext.button.Button, alternateClassName:'Ex
   this.callParent();
   arrowEl.dom.removeAttribute('tabIndex');
   arrowEl.setVisible(false);
+}}});
+Ext.define('Ext.layout.container.SegmentedButton', {extend:Ext.layout.container.Container, alias:'layout.segmentedbutton', needsItemSize:false, setsItemSize:false, _btnRowCls:Ext.baseCSSPrefix + 'segmented-button-row', getRenderTree:function() {
+  var me = this, result = me.callParent(), i, ln;
+  if (me.owner.getVertical()) {
+    for (i = 0, ln = result.length; i < ln; i++) {
+      result[i] = {cls:me._btnRowCls, cn:result[i]};
+    }
+  }
+  return result;
+}, getItemLayoutEl:function(item) {
+  var dom = item.el.dom;
+  return this.owner.getVertical() ? dom.parentNode : dom;
+}, onDestroy:function() {
+  if (this.rendered) {
+    var targetEl = this.getRenderTarget(), row;
+    while (row = targetEl.last()) {
+      row.destroy();
+    }
+  }
+}});
+Ext.define('Ext.button.Segmented', {extend:Ext.container.Container, xtype:'segmentedbutton', config:{allowDepress:false, allowMultiple:false, forceSelection:false, allowToggle:true, vertical:false, defaultUI:'default'}, beforeRenderConfig:{value:undefined}, defaultBindProperty:'value', publishes:['value'], twoWayBindable:['value'], layout:'segmentedbutton', defaultType:'button', maskOnDisable:false, isSegmentedButton:true, baseCls:Ext.baseCSSPrefix + 'segmented-button', itemCls:Ext.baseCSSPrefix + 
+'segmented-button-item', _firstCls:Ext.baseCSSPrefix + 'segmented-button-first', _lastCls:Ext.baseCSSPrefix + 'segmented-button-last', _middleCls:Ext.baseCSSPrefix + 'segmented-button-middle', applyValue:function(value, oldValue) {
+  var me = this, allowMultiple = me.getAllowMultiple(), buttonValue, button, values, oldValues, items, i, ln, hasPressed;
+  values = value instanceof Array ? value : value == null ? [] : [value];
+  oldValues = oldValue instanceof Array ? oldValue : oldValue == null ? [] : [oldValue];
+  me._isApplyingValue = true;
+  if (!me.rendered) {
+    items = me.items.items;
+    for (i = items.length - 1; i >= 0; i--) {
+      button = items[i];
+      if (me.forceSelection && !i && !hasPressed) {
+        button.pressed = true;
+      }
+      if (button.pressed) {
+        hasPressed = true;
+        buttonValue = button.value;
+        if (buttonValue == null) {
+          buttonValue = me.items.indexOf(button);
+        }
+        if (!Ext.Array.contains(values, buttonValue)) {
+          values.unshift(buttonValue);
+        }
+      }
+    }
+  }
+  ln = values.length;
+  if (ln > 1 && !allowMultiple) {
+    Ext.raise('Cannot set multiple values when allowMultiple is false');
+  }
+  for (i = 0; i < ln; i++) {
+    value = values[i];
+    button = me._lookupButtonByValue(value);
+    if (button) {
+      buttonValue = button.value;
+      if (buttonValue != null && buttonValue !== value) {
+        values[i] = buttonValue;
+      }
+      if (!button.pressed) {
+        button.setPressed(true);
+      }
+    } else {
+      Ext.raise("Invalid value '" + value + "' for segmented button: '" + me.id + "'");
+    }
+  }
+  value = allowMultiple ? values : ln ? values[0] : null;
+  for (i = 0, ln = oldValues.length; i < ln; i++) {
+    oldValue = oldValues[i];
+    if (!Ext.Array.contains(values, oldValue)) {
+      me._lookupButtonByValue(oldValue).setPressed(false);
+    }
+  }
+  me._isApplyingValue = false;
+  if (me.hasListeners.change && !Ext.Array.equals(values, oldValues)) {
+    me.fireEvent('change', me, values, oldValues);
+  }
+  return value;
+}, beforeRender:function() {
+  var me = this;
+  me.addCls(me.baseCls + me._getClsSuffix());
+  me._syncItemClasses(true);
+  me.callParent();
+}, onAdd:function(item) {
+  var me = this, syncItemClasses = '_syncItemClasses';
+  var items = me.items.items, ln = items.length, i = 0, value, defaultUI;
+  if (item.ui === 'default' && !item.hasOwnProperty('ui')) {
+    defaultUI = me.getDefaultUI();
+    if (defaultUI !== 'default') {
+      item.ui = defaultUI;
+    }
+  }
+  for (; i < ln; i++) {
+    if (items[i] !== item) {
+      value = items[i].value;
+      if (value != null && value === item.value) {
+        Ext.raise("Segmented button '" + me.id + "' cannot contain multiple items with value: '" + value + "'");
+      }
+    }
+  }
+  me.mon(item, {hide:syncItemClasses, show:syncItemClasses, beforetoggle:'_onBeforeItemToggle', toggle:'_onItemToggle', scope:me});
+  if (me.getAllowToggle()) {
+    item.enableToggle = true;
+    if (!me.getAllowMultiple()) {
+      item.toggleGroup = me.getId();
+      item.allowDepress = me.getAllowDepress();
+    }
+  }
+  item.addCls(me.itemCls + me._getClsSuffix());
+  me._syncItemClasses();
+  me.callParent([item]);
+}, onRemove:function(item) {
+  var me = this;
+  item.removeCls(me.itemCls + me._getClsSuffix());
+  me._syncItemClasses();
+  me.callParent([item]);
+}, beforeLayout:function() {
+  if (Ext.isChrome) {
+    this.el.dom.offsetWidth;
+  }
+  this.callParent();
+}, updateDefaultUI:function(defaultUI) {
+  var items = this.items, item, i, ln;
+  if (this.rendered) {
+    Ext.raise('Changing the ui config of a segmented button after render is not supported.');
+  } else {
+    if (items) {
+      if (items.items) {
+        items = items.items;
+      }
+      for (i = 0, ln = items.length; i < ln; i++) {
+        item = items[i];
+        if (item.ui === 'default' && defaultUI !== 'default' && !item.hasOwnProperty('ui')) {
+          items[i].ui = defaultUI;
+        }
+      }
+    }
+  }
+}, updateAllowDepress:function(newAllowDepress, oldAllowDepress) {
+  if (this.rendered && newAllowDepress !== oldAllowDepress) {
+    Ext.raise('Changing the allowDepress config of a segmented button after render is not supported.');
+  }
+}, updateAllowMultiple:function(newAllowMultiple, oldAllowMultiple) {
+  if (this.rendered && newAllowMultiple !== oldAllowMultiple) {
+    Ext.raise('Changing the allowMultiple config of a segmented button after render is not supported.');
+  }
+}, updateAllowToggle:function(newAllowToggle, oldAllowToggle) {
+  if (this.rendered && newAllowToggle !== oldAllowToggle) {
+    Ext.raise('Changing the allowToggle config of a segmented button after render is not supported.');
+  }
+}, updateVertical:function(newVertical, oldVertical) {
+  if (this.rendered && newVertical !== oldVertical) {
+    Ext.raise('Changing the orientation of a segmented button after render is not supported.');
+  }
+}, privates:{_getClsSuffix:function() {
+  return this.getVertical() ? '-vertical' : '-horizontal';
+}, _getFirstCls:function() {
+  return this._firstCls;
+}, _getLastCls:function() {
+  return this._lastCls;
+}, _lookupButtonByValue:function(value) {
+  var items = this.items.items, ln = items.length, i = 0, button = null, buttonValue, btn;
+  for (; i < ln; i++) {
+    btn = items[i];
+    buttonValue = btn.value;
+    if (buttonValue != null && buttonValue === value) {
+      button = btn;
+      break;
+    }
+  }
+  if (!button && typeof value === 'number') {
+    button = items[value];
+  }
+  return button;
+}, _onBeforeItemToggle:function(button, pressed) {
+  if (this.allowMultiple && this.forceSelection && !pressed && this.getValue().length === 1) {
+    return false;
+  }
+}, _onItemToggle:function(button, pressed) {
+  if (this._isApplyingValue) {
+    return;
+  }
+  var me = this, Array = Ext.Array, allowMultiple = me.allowMultiple, buttonValue = button.value != null ? button.value : me.items.indexOf(button), value = me.getValue(), valueIndex;
+  if (allowMultiple) {
+    valueIndex = Array.indexOf(value, buttonValue);
+  }
+  if (pressed) {
+    if (allowMultiple) {
+      if (valueIndex === -1) {
+        value = Array.slice(value);
+        value.push(buttonValue);
+      }
+    } else {
+      value = buttonValue;
+    }
+  } else {
+    if (allowMultiple) {
+      if (valueIndex > -1) {
+        value = Array.slice(value);
+        value.splice(valueIndex, 1);
+      }
+    } else {
+      if (value === buttonValue) {
+        value = null;
+      }
+    }
+  }
+  me.setValue(value);
+  me.fireEvent('toggle', me, button, pressed);
+}, _syncItemClasses:function(force) {
+  var me = this, firstCls, middleCls, lastCls, items, ln, visibleItems, item, i;
+  if (!force && !me.rendered) {
+    return;
+  }
+  firstCls = me._getFirstCls();
+  middleCls = me._middleCls;
+  lastCls = me._getLastCls();
+  items = me.items.items;
+  ln = items.length;
+  visibleItems = [];
+  for (i = 0; i < ln; i++) {
+    item = items[i];
+    if (!item.hidden) {
+      visibleItems.push(item);
+    }
+  }
+  ln = visibleItems.length;
+  for (i = 0; i < ln; i++) {
+    visibleItems[i].removeCls([firstCls, middleCls, lastCls]);
+  }
+  if (ln > 1) {
+    visibleItems[0].addCls(firstCls);
+    for (i = 1; i < ln - 1; i++) {
+      visibleItems[i].addCls(middleCls);
+    }
+    visibleItems[ln - 1].addCls(lastCls);
+  }
 }}});
 Ext.define('Ext.panel.Bar', {extend:Ext.container.Container, vertical:false, _verticalSides:{left:1, right:1}, initComponent:function() {
   var me = this, vertical = me.vertical;
@@ -88155,6 +88700,275 @@ Ext.define('Ext.chart.overrides.AbstractChart', {override:'Ext.chart.AbstractCha
   this.destroyChart();
   this.callParent(arguments);
 }});
+Ext.define('Ext.chart.grid.HorizontalGrid', {extend:Ext.draw.sprite.Sprite, alias:'grid.horizontal', inheritableStatics:{def:{processors:{x:'number', y:'number', width:'number', height:'number'}, defaults:{x:0, y:0, width:1, height:1, strokeStyle:'#DDD'}}}, render:function(surface, ctx, clipRect) {
+  var attr = this.attr, y = surface.roundPixel(attr.y), halfLineWidth = ctx.lineWidth * 0.5;
+  ctx.beginPath();
+  ctx.rect(clipRect[0] - surface.matrix.getDX(), y + halfLineWidth, +clipRect[2], attr.height);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(clipRect[0] - surface.matrix.getDX(), y + halfLineWidth);
+  ctx.lineTo(clipRect[0] + clipRect[2] - surface.matrix.getDX(), y + halfLineWidth);
+  ctx.stroke();
+}});
+Ext.define('Ext.chart.grid.VerticalGrid', {extend:Ext.draw.sprite.Sprite, alias:'grid.vertical', inheritableStatics:{def:{processors:{x:'number', y:'number', width:'number', height:'number'}, defaults:{x:0, y:0, width:1, height:1, strokeStyle:'#DDD'}}}, render:function(surface, ctx, clipRect) {
+  var attr = this.attr, x = surface.roundPixel(attr.x), halfLineWidth = ctx.lineWidth * 0.5;
+  ctx.beginPath();
+  ctx.rect(x - halfLineWidth, clipRect[1] - surface.matrix.getDY(), attr.width, clipRect[3]);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x - halfLineWidth, clipRect[1] - surface.matrix.getDY());
+  ctx.lineTo(x - halfLineWidth, clipRect[1] + clipRect[3] - surface.matrix.getDY());
+  ctx.stroke();
+}});
+Ext.define('Ext.chart.CartesianChart', {extend:Ext.chart.AbstractChart, alternateClassName:'Ext.chart.Chart', xtype:['cartesian', 'chart'], isCartesian:true, config:{flipXY:false, innerRect:[0, 0, 1, 1], innerPadding:{top:0, left:0, right:0, bottom:0}}, applyInnerPadding:function(padding, oldPadding) {
+  if (!Ext.isObject(padding)) {
+    return Ext.util.Format.parseBox(padding);
+  } else {
+    if (!oldPadding) {
+      return padding;
+    } else {
+      return Ext.apply(oldPadding, padding);
+    }
+  }
+}, getDirectionForAxis:function(position) {
+  var flipXY = this.getFlipXY();
+  if (position === 'left' || position === 'right') {
+    if (flipXY) {
+      return 'X';
+    } else {
+      return 'Y';
+    }
+  } else {
+    if (flipXY) {
+      return 'Y';
+    } else {
+      return 'X';
+    }
+  }
+}, performLayout:function() {
+  var me = this;
+  me.animationSuspendCount++;
+  if (me.callParent() === false) {
+    --me.animationSuspendCount;
+    return;
+  }
+  me.suspendThicknessChanged();
+  var chartRect = me.getSurface('chart').getRect(), width = chartRect[2], height = chartRect[3], axes = me.getAxes(), axis, seriesList = me.getSeries(), series, axisSurface, thickness, insetPadding = me.getInsetPadding(), innerPadding = me.getInnerPadding(), surface, gridSurface, shrinkBox = Ext.apply({}, insetPadding), mainRect, innerWidth, innerHeight, elements, floating, floatingValue, matrix, i, ln, isRtl = me.getInherited().rtl, flipXY = me.getFlipXY();
+  if (width <= 0 || height <= 0) {
+    return;
+  }
+  for (i = 0; i < axes.length; i++) {
+    axis = axes[i];
+    axisSurface = axis.getSurface();
+    floating = axis.getFloating();
+    floatingValue = floating ? floating.value : null;
+    thickness = axis.getThickness();
+    switch(axis.getPosition()) {
+      case 'top':
+        axisSurface.setRect([0, shrinkBox.top + 1, width, thickness]);
+        break;
+      case 'bottom':
+        axisSurface.setRect([0, height - (shrinkBox.bottom + thickness), width, thickness]);
+        break;
+      case 'left':
+        axisSurface.setRect([shrinkBox.left, 0, thickness, height]);
+        break;
+      case 'right':
+        axisSurface.setRect([width - (shrinkBox.right + thickness), 0, thickness, height]);
+        break;
+    }
+    if (floatingValue === null) {
+      shrinkBox[axis.getPosition()] += thickness;
+    }
+  }
+  width -= shrinkBox.left + shrinkBox.right;
+  height -= shrinkBox.top + shrinkBox.bottom;
+  mainRect = [shrinkBox.left, shrinkBox.top, width, height];
+  shrinkBox.left += innerPadding.left;
+  shrinkBox.top += innerPadding.top;
+  shrinkBox.right += innerPadding.right;
+  shrinkBox.bottom += innerPadding.bottom;
+  innerWidth = width - innerPadding.left - innerPadding.right;
+  innerHeight = height - innerPadding.top - innerPadding.bottom;
+  me.setInnerRect([shrinkBox.left, shrinkBox.top, innerWidth, innerHeight]);
+  if (innerWidth <= 0 || innerHeight <= 0) {
+    return;
+  }
+  me.setMainRect(mainRect);
+  me.getSurface().setRect(mainRect);
+  for (i = 0, ln = me.surfaceMap.grid && me.surfaceMap.grid.length; i < ln; i++) {
+    gridSurface = me.surfaceMap.grid[i];
+    gridSurface.setRect(mainRect);
+    gridSurface.matrix.set(1, 0, 0, 1, innerPadding.left, innerPadding.top);
+    gridSurface.matrix.inverse(gridSurface.inverseMatrix);
+  }
+  for (i = 0; i < axes.length; i++) {
+    axis = axes[i];
+    axisSurface = axis.getSurface();
+    matrix = axisSurface.matrix;
+    elements = matrix.elements;
+    switch(axis.getPosition()) {
+      case 'top':
+      case 'bottom':
+        elements[4] = shrinkBox.left;
+        axis.setLength(innerWidth);
+        break;
+      case 'left':
+      case 'right':
+        elements[5] = shrinkBox.top;
+        axis.setLength(innerHeight);
+        break;
+    }
+    axis.updateTitleSprite();
+    matrix.inverse(axisSurface.inverseMatrix);
+  }
+  for (i = 0, ln = seriesList.length; i < ln; i++) {
+    series = seriesList[i];
+    surface = series.getSurface();
+    surface.setRect(mainRect);
+    if (flipXY) {
+      if (isRtl) {
+        surface.matrix.set(0, -1, -1, 0, innerPadding.left + innerWidth, innerPadding.top + innerHeight);
+      } else {
+        surface.matrix.set(0, -1, 1, 0, innerPadding.left, innerPadding.top + innerHeight);
+      }
+    } else {
+      surface.matrix.set(1, 0, 0, -1, innerPadding.left, innerPadding.top + innerHeight);
+    }
+    surface.matrix.inverse(surface.inverseMatrix);
+    series.getOverlaySurface().setRect(mainRect);
+  }
+  me.redraw();
+  me.animationSuspendCount--;
+  me.resumeThicknessChanged();
+}, refloatAxes:function() {
+  var me = this, axes = me.getAxes(), axesCount = axes && axes.length || 0, axis, axisSurface, axisRect, floating, value, alongAxis, matrix, size = me.getChartSize(), inset = me.getInsetPadding(), inner = me.getInnerPadding(), width = size.width - inset.left - inset.right, height = size.height - inset.top - inset.bottom, isHorizontal, i;
+  for (i = 0; i < axesCount; i++) {
+    axis = axes[i];
+    floating = axis.getFloating();
+    value = floating ? floating.value : null;
+    if (value === null) {
+      delete axis.floatingAtCoord;
+      continue;
+    }
+    axisSurface = axis.getSurface();
+    axisRect = axisSurface.getRect();
+    if (!axisRect) {
+      continue;
+    }
+    axisRect = axisRect.slice();
+    alongAxis = me.getAxis(floating.alongAxis);
+    if (alongAxis) {
+      isHorizontal = alongAxis.getAlignment() === 'horizontal';
+      if (Ext.isString(value)) {
+        value = alongAxis.getCoordFor(value);
+      }
+      alongAxis.floatingAxes[axis.getId()] = value;
+      matrix = alongAxis.getSprites()[0].attr.matrix;
+      if (isHorizontal) {
+        value = value * matrix.getXX() + matrix.getDX();
+        axis.floatingAtCoord = value + inner.left + inner.right;
+      } else {
+        value = value * matrix.getYY() + matrix.getDY();
+        axis.floatingAtCoord = value + inner.top + inner.bottom;
+      }
+    } else {
+      isHorizontal = axis.getAlignment() === 'horizontal';
+      if (isHorizontal) {
+        axis.floatingAtCoord = value + inner.top + inner.bottom;
+      } else {
+        axis.floatingAtCoord = value + inner.left + inner.right;
+      }
+      value = axisSurface.roundPixel(0.01 * value * (isHorizontal ? height : width));
+    }
+    switch(axis.getPosition()) {
+      case 'top':
+        axisRect[1] = inset.top + inner.top + value - axisRect[3] + 1;
+        break;
+      case 'bottom':
+        axisRect[1] = inset.top + inner.top + (alongAxis ? value : height - value);
+        break;
+      case 'left':
+        axisRect[0] = inset.left + inner.left + value - axisRect[2];
+        break;
+      case 'right':
+        axisRect[0] = inset.left + inner.left + (alongAxis ? value : width - value) - 1;
+        break;
+    }
+    axisSurface.setRect(axisRect);
+  }
+}, redraw:function() {
+  var me = this, seriesList = me.getSeries(), axes = me.getAxes(), rect = me.getMainRect(), innerWidth, innerHeight, innerPadding = me.getInnerPadding(), sprites, xRange, yRange, isSide, attr, i, j, ln, axis, axisX, axisY, range, visibleRange, flipXY = me.getFlipXY(), zBase = 1000, zIndex, markersZIndex, series, sprite, markers;
+  if (!rect) {
+    return;
+  }
+  innerWidth = rect[2] - innerPadding.left - innerPadding.right;
+  innerHeight = rect[3] - innerPadding.top - innerPadding.bottom;
+  for (i = 0; i < seriesList.length; i++) {
+    series = seriesList[i];
+    if (axisX = series.getXAxis()) {
+      visibleRange = axisX.getVisibleRange();
+      xRange = axisX.getRange();
+      xRange = [xRange[0] + (xRange[1] - xRange[0]) * visibleRange[0], xRange[0] + (xRange[1] - xRange[0]) * visibleRange[1]];
+    } else {
+      xRange = series.getXRange();
+    }
+    if (axisY = series.getYAxis()) {
+      visibleRange = axisY.getVisibleRange();
+      yRange = axisY.getRange();
+      yRange = [yRange[0] + (yRange[1] - yRange[0]) * visibleRange[0], yRange[0] + (yRange[1] - yRange[0]) * visibleRange[1]];
+    } else {
+      yRange = series.getYRange();
+    }
+    attr = {visibleMinX:xRange[0], visibleMaxX:xRange[1], visibleMinY:yRange[0], visibleMaxY:yRange[1], innerWidth:innerWidth, innerHeight:innerHeight, flipXY:flipXY};
+    sprites = series.getSprites();
+    for (j = 0, ln = sprites.length; j < ln; j++) {
+      sprite = sprites[j];
+      zIndex = sprite.attr.zIndex;
+      if (zIndex < zBase) {
+        zIndex += (i + 1) * 100 + zBase;
+        sprite.attr.zIndex = zIndex;
+        markers = sprite.getMarker('items');
+        if (markers) {
+          markersZIndex = markers.attr.zIndex;
+          if (markersZIndex === Number.MAX_VALUE) {
+            markers.attr.zIndex = zIndex;
+          } else {
+            if (markersZIndex < zBase) {
+              markers.attr.zIndex = zIndex + markersZIndex;
+            }
+          }
+        }
+      }
+      sprite.setAttributes(attr, true);
+    }
+  }
+  for (i = 0; i < axes.length; i++) {
+    axis = axes[i];
+    isSide = axis.isSide();
+    sprites = axis.getSprites();
+    range = axis.getRange();
+    visibleRange = axis.getVisibleRange();
+    attr = {dataMin:range[0], dataMax:range[1], visibleMin:visibleRange[0], visibleMax:visibleRange[1]};
+    if (isSide) {
+      attr.length = innerHeight;
+      attr.startGap = innerPadding.bottom;
+      attr.endGap = innerPadding.top;
+    } else {
+      attr.length = innerWidth;
+      attr.startGap = innerPadding.left;
+      attr.endGap = innerPadding.right;
+    }
+    for (j = 0, ln = sprites.length; j < ln; j++) {
+      sprites[j].setAttributes(attr, true);
+    }
+  }
+  me.renderFrame();
+  me.callParent(arguments);
+}, renderFrame:function() {
+  this.refloatAxes();
+  this.callParent();
+}});
 Ext.define('Ext.chart.grid.CircularGrid', {extend:Ext.draw.sprite.Circle, alias:'grid.circular', inheritableStatics:{def:{defaults:{r:1, strokeStyle:'#DDD'}}}});
 Ext.define('Ext.chart.grid.RadialGrid', {extend:Ext.draw.sprite.Path, alias:'grid.radial', inheritableStatics:{def:{processors:{startRadius:'number', endRadius:'number'}, defaults:{startRadius:0, endRadius:1, scalingCenterX:0, scalingCenterY:0, strokeStyle:'#DDD'}, triggers:{startRadius:'path,bbox', endRadius:'path,bbox'}}}, render:function() {
   this.callParent(arguments);
@@ -88343,6 +89157,602 @@ Ext.define('Ext.chart.PolarChart', {extend:Ext.chart.AbstractChart, xtype:'polar
   this.refloatAxes();
   this.callParent();
 }});
+Ext.define('Ext.chart.SpaceFillingChart', {extend:Ext.chart.AbstractChart, xtype:'spacefilling', config:{}, performLayout:function() {
+  var me = this;
+  try {
+    me.animationSuspendCount++;
+    if (me.callParent() === false) {
+      return;
+    }
+    var chartRect = me.getSurface('chart').getRect(), padding = me.getInsetPadding(), width = chartRect[2] - padding.left - padding.right, height = chartRect[3] - padding.top - padding.bottom, mainRect = [padding.left, padding.top, width, height], seriesList = me.getSeries(), series, i, ln;
+    me.getSurface().setRect(mainRect);
+    me.setMainRect(mainRect);
+    for (i = 0, ln = seriesList.length; i < ln; i++) {
+      series = seriesList[i];
+      series.getSurface().setRect(mainRect);
+      if (series.setRect) {
+        series.setRect(mainRect);
+      }
+      series.getOverlaySurface().setRect(chartRect);
+    }
+    me.redraw();
+  } catch (e$37) {
+    Ext.log.error(me.$className + ': Unhandled Exception: ', e$37.description || e$37.message);
+    throw e$37;
+  } finally {
+    me.animationSuspendCount--;
+  }
+}, redraw:function() {
+  var me = this, seriesList = me.getSeries(), series, i, ln;
+  for (i = 0, ln = seriesList.length; i < ln; i++) {
+    series = seriesList[i];
+    series.getSprites();
+  }
+  me.renderFrame();
+  me.callParent(arguments);
+}});
+Ext.define('Ext.chart.axis.sprite.Axis3D', {extend:Ext.chart.axis.sprite.Axis, alias:'sprite.axis3d', type:'axis3d', inheritableStatics:{def:{processors:{depth:'number'}, defaults:{depth:0}, triggers:{depth:'layout'}}}, config:{fx:{customDurations:{depth:0}}}, layoutUpdater:function() {
+  var me = this, chart = me.getAxis().getChart();
+  if (chart.isInitializing) {
+    return;
+  }
+  var attr = me.attr, layout = me.getLayout(), depth = layout.isDiscrete ? 0 : attr.depth, isRtl = chart.getInherited().rtl, min = attr.dataMin + (attr.dataMax - attr.dataMin) * attr.visibleMin, max = attr.dataMin + (attr.dataMax - attr.dataMin) * attr.visibleMax, context = {attr:attr, segmenter:me.getSegmenter(), renderer:me.defaultRenderer};
+  if (attr.position === 'left' || attr.position === 'right') {
+    attr.translationX = 0;
+    attr.translationY = max * (attr.length - depth) / (max - min) + depth;
+    attr.scalingX = 1;
+    attr.scalingY = (-attr.length + depth) / (max - min);
+    attr.scalingCenterY = 0;
+    attr.scalingCenterX = 0;
+    me.applyTransformations(true);
+  } else {
+    if (attr.position === 'top' || attr.position === 'bottom') {
+      if (isRtl) {
+        attr.translationX = attr.length + min * attr.length / (max - min) + 1;
+      } else {
+        attr.translationX = -min * attr.length / (max - min);
+      }
+      attr.translationY = 0;
+      attr.scalingX = (isRtl ? -1 : 1) * (attr.length - depth) / (max - min);
+      attr.scalingY = 1;
+      attr.scalingCenterY = 0;
+      attr.scalingCenterX = 0;
+      me.applyTransformations(true);
+    }
+  }
+  if (layout) {
+    layout.calculateLayout(context);
+    me.setLayoutContext(context);
+  }
+}, renderAxisLine:function(surface, ctx, layout, clipRect) {
+  var me = this, attr = me.attr, halfLineWidth = attr.lineWidth * 0.5, layout = me.getLayout(), depth = layout.isDiscrete ? 0 : attr.depth, docked = attr.position, position, gaugeAngles;
+  if (attr.axisLine && attr.length) {
+    switch(docked) {
+      case 'left':
+        position = surface.roundPixel(clipRect[2]) - halfLineWidth;
+        ctx.moveTo(position, -attr.endGap + depth);
+        ctx.lineTo(position, attr.length + attr.startGap);
+        break;
+      case 'right':
+        ctx.moveTo(halfLineWidth, -attr.endGap);
+        ctx.lineTo(halfLineWidth, attr.length + attr.startGap);
+        break;
+      case 'bottom':
+        ctx.moveTo(-attr.startGap, halfLineWidth);
+        ctx.lineTo(attr.length - depth + attr.endGap, halfLineWidth);
+        break;
+      case 'top':
+        position = surface.roundPixel(clipRect[3]) - halfLineWidth;
+        ctx.moveTo(-attr.startGap, position);
+        ctx.lineTo(attr.length + attr.endGap, position);
+        break;
+      case 'angular':
+        ctx.moveTo(attr.centerX + attr.length, attr.centerY);
+        ctx.arc(attr.centerX, attr.centerY, attr.length, 0, Math.PI * 2, true);
+        break;
+      case 'gauge':
+        gaugeAngles = me.getGaugeAngles();
+        ctx.moveTo(attr.centerX + Math.cos(gaugeAngles.start) * attr.length, attr.centerY + Math.sin(gaugeAngles.start) * attr.length);
+        ctx.arc(attr.centerX, attr.centerY, attr.length, gaugeAngles.start, gaugeAngles.end, true);
+        break;
+    }
+  }
+}});
+Ext.define('Ext.chart.axis.Axis3D', {extend:Ext.chart.axis.Axis, xtype:'axis3d', config:{depth:0}, onSeriesChange:function(chart) {
+  var me = this, eventName = 'depthchange', listenerName = 'onSeriesDepthChange', i, series;
+  function toggle(action) {
+    var boundSeries = me.boundSeries;
+    for (i = 0; i < boundSeries.length; i++) {
+      series = boundSeries[i];
+      series[action](eventName, listenerName, me);
+    }
+  }
+  toggle('un');
+  me.callParent(arguments);
+  toggle('on');
+}, onSeriesDepthChange:function(series, depth) {
+  var me = this, maxDepth = depth, boundSeries = me.boundSeries, i, item;
+  if (depth > me.getDepth()) {
+    maxDepth = depth;
+  } else {
+    for (i = 0; i < boundSeries.length; i++) {
+      item = boundSeries[i];
+      if (item !== series && item.getDepth) {
+        depth = item.getDepth();
+        if (depth > maxDepth) {
+          maxDepth = depth;
+        }
+      }
+    }
+  }
+  me.setDepth(maxDepth);
+}, updateDepth:function(depth) {
+  var me = this, sprites = me.getSprites(), attr = {depth:depth};
+  if (sprites && sprites.length) {
+    sprites[0].setAttributes(attr);
+  }
+  if (me.gridSpriteEven && me.gridSpriteOdd) {
+    me.gridSpriteEven.getTemplate().setAttributes(attr);
+    me.gridSpriteOdd.getTemplate().setAttributes(attr);
+  }
+}, getGridAlignment:function() {
+  switch(this.getPosition()) {
+    case 'left':
+    case 'right':
+      return 'horizontal3d';
+    case 'top':
+    case 'bottom':
+      return 'vertical3d';
+  }
+}});
+Ext.define('Ext.chart.axis.Category', {extend:Ext.chart.axis.Axis, alias:'axis.category', type:'category', config:{layout:'combineDuplicate', segmenter:'names'}});
+Ext.define('Ext.chart.axis.Category3D', {extend:Ext.chart.axis.Axis3D, alias:'axis.category3d', type:'category3d', config:{layout:'combineDuplicate', segmenter:'names'}});
+Ext.define('Ext.chart.axis.Numeric', {extend:Ext.chart.axis.Axis, type:'numeric', alias:['axis.numeric', 'axis.radial'], config:{layout:'continuous', segmenter:'numeric', aggregator:'double'}});
+Ext.define('Ext.chart.axis.Numeric3D', {extend:Ext.chart.axis.Axis3D, alias:['axis.numeric3d'], type:'numeric3d', config:{layout:'continuous', segmenter:'numeric', aggregator:'double'}});
+Ext.define('Ext.chart.axis.Time', {extend:Ext.chart.axis.Numeric, alias:'axis.time', type:'time', config:{calculateByLabelSize:true, dateFormat:null, fromDate:null, toDate:null, step:[Ext.Date.DAY, 1], layout:'continuous', segmenter:'time', aggregator:'time'}, updateDateFormat:function(format) {
+  this.setRenderer(function(axis, date) {
+    return Ext.Date.format(new Date(date), format);
+  });
+}, updateFromDate:function(date) {
+  this.setMinimum(+date);
+}, updateToDate:function(date) {
+  this.setMaximum(+date);
+}, getCoordFor:function(value) {
+  if (Ext.isString(value)) {
+    value = new Date(value);
+  }
+  return +value;
+}});
+Ext.define('Ext.chart.axis.Time3D', {extend:Ext.chart.axis.Numeric3D, alias:'axis.time3d', type:'time3d', config:{calculateByLabelSize:true, dateFormat:null, fromDate:null, toDate:null, step:[Ext.Date.DAY, 1], layout:'continuous', segmenter:'time', aggregator:'time'}, updateDateFormat:function(format) {
+  this.setRenderer(function(axis, date) {
+    return Ext.Date.format(new Date(date), format);
+  });
+}, updateFromDate:function(date) {
+  this.setMinimum(+date);
+}, updateToDate:function(date) {
+  this.setMaximum(+date);
+}, getCoordFor:function(value) {
+  if (Ext.isString(value)) {
+    value = new Date(value);
+  }
+  return +value;
+}});
+Ext.define('Ext.chart.grid.HorizontalGrid3D', {extend:Ext.chart.grid.HorizontalGrid, alias:'grid.horizontal3d', inheritableStatics:{def:{processors:{depth:'number'}, defaults:{depth:0}}}, render:function(surface, ctx, clipRect) {
+  var attr = this.attr, x = surface.roundPixel(attr.x), y = surface.roundPixel(attr.y), dx = surface.matrix.getDX(), halfLineWidth = ctx.lineWidth * 0.5, height = attr.height, depth = attr.depth, left, top;
+  if (y <= clipRect[1]) {
+    return;
+  }
+  left = clipRect[0] + depth - dx;
+  top = y + halfLineWidth - depth;
+  ctx.beginPath();
+  ctx.rect(left, top, clipRect[2], height);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(left + clipRect[2], top);
+  ctx.stroke();
+  left = clipRect[0] + x - dx;
+  top = y + halfLineWidth;
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(left + depth, top - depth);
+  ctx.lineTo(left + depth, top - depth + height);
+  ctx.lineTo(left, top + height);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(left + depth, top - depth);
+  ctx.stroke();
+}});
+Ext.define('Ext.chart.grid.VerticalGrid3D', {extend:Ext.chart.grid.VerticalGrid, alias:'grid.vertical3d', inheritableStatics:{def:{processors:{depth:'number'}, defaults:{depth:0}}}, render_:function(surface, ctx, clipRect) {
+  var attr = this.attr, x = surface.roundPixel(attr.x), halfLineWidth = ctx.lineWidth * 0.5;
+  ctx.beginPath();
+  ctx.rect(x - halfLineWidth, clipRect[1] - surface.matrix.getDY(), attr.width, clipRect[3]);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x - halfLineWidth, clipRect[1] - surface.matrix.getDY());
+  ctx.lineTo(x - halfLineWidth, clipRect[1] + clipRect[3] - surface.matrix.getDY());
+  ctx.stroke();
+}, render:function(surface, ctx, clipRect) {
+  var attr = this.attr, x = surface.roundPixel(attr.x), dy = surface.matrix.getDY(), halfLineWidth = ctx.lineWidth * 0.5, width = attr.width, depth = attr.depth, left, top;
+  if (x >= clipRect[2]) {
+    return;
+  }
+  left = x - halfLineWidth + depth;
+  top = clipRect[1] - depth - dy;
+  ctx.beginPath();
+  ctx.rect(left, top, width, clipRect[3]);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(left, top + clipRect[3]);
+  ctx.stroke();
+  left = x - halfLineWidth;
+  top = clipRect[3];
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(left + depth, top - depth);
+  ctx.lineTo(left + depth + width, top - depth);
+  ctx.lineTo(left + width, top);
+  ctx.closePath();
+  ctx.fill();
+  left = x - halfLineWidth;
+  top = clipRect[3];
+  ctx.beginPath();
+  ctx.moveTo(left, top);
+  ctx.lineTo(left + depth, top - depth);
+  ctx.stroke();
+}});
+Ext.define('Ext.chart.interactions.CrossZoom', {extend:Ext.chart.interactions.Abstract, type:'crosszoom', alias:'interaction.crosszoom', isCrossZoom:true, config:{axes:true, gestures:{dragstart:'onGestureStart', drag:'onGesture', dragend:'onGestureEnd', dblclick:'onDoubleTap'}, undoButton:{}}, stopAnimationBeforeSync:false, zoomAnimationInProgress:false, constructor:function() {
+  this.callParent(arguments);
+  this.zoomHistory = [];
+}, applyAxes:function(axesConfig) {
+  var result = {};
+  if (axesConfig === true) {
+    return {top:{}, right:{}, bottom:{}, left:{}};
+  } else {
+    if (Ext.isArray(axesConfig)) {
+      result = {};
+      Ext.each(axesConfig, function(axis) {
+        result[axis] = {};
+      });
+    } else {
+      if (Ext.isObject(axesConfig)) {
+        Ext.iterate(axesConfig, function(key, val) {
+          if (val === true) {
+            result[key] = {};
+          } else {
+            if (val !== false) {
+              result[key] = val;
+            }
+          }
+        });
+      }
+    }
+  }
+  return result;
+}, applyUndoButton:function(button, oldButton) {
+  var me = this;
+  if (oldButton) {
+    oldButton.destroy();
+  }
+  if (button) {
+    return Ext.create('Ext.Button', Ext.apply({cls:[], text:'Undo Zoom', disabled:true, handler:function() {
+      me.undoZoom();
+    }}, button));
+  }
+}, getSurface:function() {
+  return this.getChart() && this.getChart().getSurface('main');
+}, setSeriesOpacity:function(opacity) {
+  var surface = this.getChart() && this.getChart().getSurface('series');
+  if (surface) {
+    surface.element.setStyle('opacity', opacity);
+  }
+}, onGestureStart:function(e) {
+  var me = this, chart = me.getChart(), surface = me.getSurface(), rect = chart.getInnerRect(), innerPadding = chart.getInnerPadding(), minX = innerPadding.left, maxX = minX + rect[2], minY = innerPadding.top, maxY = minY + rect[3], xy = chart.getEventXY(e), x = xy[0], y = xy[1];
+  if (me.zoomAnimationInProgress) {
+    return;
+  }
+  if (x > minX && x < maxX && y > minY && y < maxY) {
+    me.gestureEvent = 'drag';
+    me.lockEvents(me.gestureEvent);
+    me.startX = x;
+    me.startY = y;
+    me.selectionRect = surface.add({type:'rect', globalAlpha:0.5, fillStyle:'rgba(80,80,140,0.5)', strokeStyle:'rgba(80,80,140,1)', lineWidth:2, x:x, y:y, width:0, height:0, zIndex:10000});
+    me.setSeriesOpacity(0.8);
+    return false;
+  }
+}, onGesture:function(e) {
+  var me = this;
+  if (me.zoomAnimationInProgress) {
+    return;
+  }
+  if (me.getLocks()[me.gestureEvent] === me) {
+    var chart = me.getChart(), surface = me.getSurface(), rect = chart.getInnerRect(), innerPadding = chart.getInnerPadding(), minX = innerPadding.left, maxX = minX + rect[2], minY = innerPadding.top, maxY = minY + rect[3], xy = chart.getEventXY(e), x = xy[0], y = xy[1];
+    if (x < minX) {
+      x = minX;
+    } else {
+      if (x > maxX) {
+        x = maxX;
+      }
+    }
+    if (y < minY) {
+      y = minY;
+    } else {
+      if (y > maxY) {
+        y = maxY;
+      }
+    }
+    me.selectionRect.setAttributes({width:x - me.startX, height:y - me.startY});
+    if (Math.abs(me.startX - x) < 11 || Math.abs(me.startY - y) < 11) {
+      me.selectionRect.setAttributes({globalAlpha:0.5});
+    } else {
+      me.selectionRect.setAttributes({globalAlpha:1});
+    }
+    surface.renderFrame();
+    return false;
+  }
+}, onGestureEnd:function(e) {
+  var me = this;
+  if (me.zoomAnimationInProgress) {
+    return;
+  }
+  if (me.getLocks()[me.gestureEvent] === me) {
+    var chart = me.getChart(), surface = me.getSurface(), rect = chart.getInnerRect(), innerPadding = chart.getInnerPadding(), minX = innerPadding.left, maxX = minX + rect[2], minY = innerPadding.top, maxY = minY + rect[3], rectWidth = rect[2], rectHeight = rect[3], xy = chart.getEventXY(e), x = xy[0], y = xy[1];
+    if (x < minX) {
+      x = minX;
+    } else {
+      if (x > maxX) {
+        x = maxX;
+      }
+    }
+    if (y < minY) {
+      y = minY;
+    } else {
+      if (y > maxY) {
+        y = maxY;
+      }
+    }
+    if (Math.abs(me.startX - x) < 11 || Math.abs(me.startY - y) < 11) {
+      surface.remove(me.selectionRect);
+    } else {
+      me.zoomBy([Math.min(me.startX, x) / rectWidth, 1 - Math.max(me.startY, y) / rectHeight, Math.max(me.startX, x) / rectWidth, 1 - Math.min(me.startY, y) / rectHeight]);
+      me.selectionRect.setAttributes({x:Math.min(me.startX, x), y:Math.min(me.startY, y), width:Math.abs(me.startX - x), height:Math.abs(me.startY - y)});
+      me.selectionRect.setAnimation(chart.getAnimation() || {duration:0});
+      me.selectionRect.setAttributes({globalAlpha:0, x:0, y:0, width:rectWidth, height:rectHeight});
+      me.zoomAnimationInProgress = true;
+      chart.suspendThicknessChanged();
+      me.selectionRect.fx.on('animationend', function() {
+        chart.resumeThicknessChanged();
+        surface.remove(me.selectionRect);
+        me.selectionRect = null;
+        me.zoomAnimationInProgress = false;
+      });
+    }
+    surface.renderFrame();
+    me.sync();
+    me.unlockEvents(me.gestureEvent);
+    me.setSeriesOpacity(1);
+    if (!me.zoomAnimationInProgress) {
+      surface.remove(me.selectionRect);
+      me.selectionRect = null;
+    }
+  }
+}, zoomBy:function(rect) {
+  var me = this, axisConfigs = me.getAxes(), chart = me.getChart(), axes = chart.getAxes(), isRtl = chart.getInherited().rtl, config, zoomMap = {}, x1, x2;
+  if (isRtl) {
+    rect = rect.slice();
+    x1 = 1 - rect[0];
+    x2 = 1 - rect[2];
+    rect[0] = Math.min(x1, x2);
+    rect[2] = Math.max(x1, x2);
+  }
+  for (var i = 0; i < axes.length; i++) {
+    var axis = axes[i];
+    config = axisConfigs[axis.getPosition()];
+    if (config && config.allowZoom !== false) {
+      var isSide = axis.isSide(), oldRange = axis.getVisibleRange();
+      zoomMap[axis.getId()] = oldRange.slice(0);
+      if (!isSide) {
+        axis.setVisibleRange([(oldRange[1] - oldRange[0]) * rect[0] + oldRange[0], (oldRange[1] - oldRange[0]) * rect[2] + oldRange[0]]);
+      } else {
+        axis.setVisibleRange([(oldRange[1] - oldRange[0]) * rect[1] + oldRange[0], (oldRange[1] - oldRange[0]) * rect[3] + oldRange[0]]);
+      }
+    }
+  }
+  me.zoomHistory.push(zoomMap);
+  me.getUndoButton().setDisabled(false);
+}, undoZoom:function() {
+  var zoomMap = this.zoomHistory.pop(), axes = this.getChart().getAxes();
+  if (zoomMap) {
+    for (var i = 0; i < axes.length; i++) {
+      var axis = axes[i];
+      if (zoomMap[axis.getId()]) {
+        axis.setVisibleRange(zoomMap[axis.getId()]);
+      }
+    }
+  }
+  this.getUndoButton().setDisabled(this.zoomHistory.length === 0);
+  this.sync();
+}, onDoubleTap:function(e) {
+  this.undoZoom();
+}, destroy:function() {
+  this.setUndoButton(null);
+  this.callParent(arguments);
+}});
+Ext.define('Ext.chart.interactions.Crosshair', {extend:Ext.chart.interactions.Abstract, type:'crosshair', alias:'interaction.crosshair', config:{axes:{top:{label:{}, rect:{}}, right:{label:{}, rect:{}}, bottom:{label:{}, rect:{}}, left:{label:{}, rect:{}}}, lines:{horizontal:{strokeStyle:'black', lineDash:[5, 5]}, vertical:{strokeStyle:'black', lineDash:[5, 5]}}, gesture:'drag'}, applyAxes:function(axesConfig, oldAxesConfig) {
+  return Ext.merge(oldAxesConfig || {}, axesConfig);
+}, applyLines:function(linesConfig, oldLinesConfig) {
+  return Ext.merge(oldLinesConfig || {}, linesConfig);
+}, updateChart:function(chart) {
+  if (chart && !chart.isCartesian) {
+    Ext.raise('Crosshair interaction can only be used on cartesian charts.');
+  }
+  this.callParent(arguments);
+}, getGestures:function() {
+  var me = this, gestures = {};
+  gestures[me.getGesture()] = 'onGesture';
+  gestures[me.getGesture() + 'start'] = 'onGestureStart';
+  gestures[me.getGesture() + 'end'] = 'onGestureEnd';
+  return gestures;
+}, onGestureStart:function(e) {
+  var me = this, chart = me.getChart(), axesTheme = chart.getTheme().getAxis(), axisTheme, surface = chart.getSurface('overlay'), rect = chart.getInnerRect(), chartWidth = rect[2], chartHeight = rect[3], xy = chart.getEventXY(e), x = xy[0], y = xy[1], axes = chart.getAxes(), axesConfig = me.getAxes(), linesConfig = me.getLines(), axis, axisSurface, axisRect, axisWidth, axisHeight, axisPosition, axisAlignment, axisLabel, axisLabelConfig, crosshairLabelConfig, tickPadding, axisSprite, attr, axisThickness, 
+  lineWidth, halfLineWidth, title, titleBBox, titlePadding, horizontalLineCfg, verticalLineCfg, i;
+  if (x > 0 && x < chartWidth && y > 0 && y < chartHeight) {
+    me.lockEvents(me.getGesture());
+    horizontalLineCfg = Ext.apply({xclass:'Ext.chart.grid.HorizontalGrid', x:0, y:y, width:chartWidth}, linesConfig.horizontal);
+    verticalLineCfg = Ext.apply({xclass:'Ext.chart.grid.VerticalGrid', x:x, y:0, height:chartHeight}, linesConfig.vertical);
+    me.axesLabels = me.axesLabels || {};
+    for (i = 0; i < axes.length; i++) {
+      axis = axes[i];
+      axisSurface = axis.getSurface();
+      axisRect = axisSurface.getRect();
+      axisSprite = axis.getSprites()[0];
+      axisWidth = axisRect[2];
+      axisHeight = axisRect[3];
+      axisPosition = axis.getPosition();
+      axisAlignment = axis.getAlignment();
+      title = axis.getTitle();
+      titleBBox = title && title.attr.text !== '' && title.getBBox();
+      attr = axisSprite.attr;
+      axisThickness = axisSprite.thickness;
+      lineWidth = attr.axisLine ? attr.lineWidth : 0;
+      halfLineWidth = lineWidth / 2;
+      tickPadding = Math.max(attr.majorTickSize, attr.minorTickSize) + lineWidth;
+      axisLabel = me.axesLabels[axisPosition] = axisSurface.add({type:'composite'});
+      axisLabel.labelRect = axisLabel.add(Ext.apply({type:'rect', fillStyle:'white', x:axisPosition === 'right' ? lineWidth : 0, y:axisPosition === 'bottom' ? lineWidth : 0, width:axisWidth - lineWidth - (axisAlignment === 'vertical' && titleBBox ? titleBBox.width : 0), height:axisHeight - lineWidth - (axisAlignment === 'horizontal' && titleBBox ? titleBBox.height : 0), translationX:axisPosition === 'left' && titleBBox ? titleBBox.width : 0, translationY:axisPosition === 'top' && titleBBox ? titleBBox.height : 
+      0}, axesConfig.rect || axesConfig[axisPosition].rect));
+      if (axisAlignment === 'vertical' && !verticalLineCfg.strokeStyle) {
+        verticalLineCfg.strokeStyle = attr.strokeStyle;
+      }
+      if (axisAlignment === 'horizontal' && !horizontalLineCfg.strokeStyle) {
+        horizontalLineCfg.strokeStyle = attr.strokeStyle;
+      }
+      axisTheme = Ext.merge({}, axesTheme.defaults, axesTheme[axisPosition]);
+      axisLabelConfig = Ext.apply({}, axis.config.label, axisTheme.label);
+      crosshairLabelConfig = axesConfig.label || axesConfig[axisPosition].label;
+      axisLabel.labelText = axisLabel.add(Ext.apply(axisLabelConfig, crosshairLabelConfig, {type:'text', x:function() {
+        switch(axisPosition) {
+          case 'left':
+            titlePadding = titleBBox ? titleBBox.x + titleBBox.width : 0;
+            return titlePadding + (axisWidth - titlePadding - tickPadding) / 2 - halfLineWidth;
+          case 'right':
+            titlePadding = titleBBox ? axisWidth - titleBBox.x : 0;
+            return tickPadding + (axisWidth - tickPadding - titlePadding) / 2 + halfLineWidth;
+          default:
+            return 0;
+        }
+      }(), y:function() {
+        switch(axisPosition) {
+          case 'top':
+            titlePadding = titleBBox ? titleBBox.y + titleBBox.height : 0;
+            return titlePadding + (axisHeight - titlePadding - tickPadding) / 2 - halfLineWidth;
+          case 'bottom':
+            titlePadding = titleBBox ? axisHeight - titleBBox.y : 0;
+            return tickPadding + (axisHeight - tickPadding - titlePadding) / 2 + halfLineWidth;
+          default:
+            return 0;
+        }
+      }()}));
+    }
+    me.horizontalLine = surface.add(horizontalLineCfg);
+    me.verticalLine = surface.add(verticalLineCfg);
+    return false;
+  }
+}, onGesture:function(e) {
+  var me = this;
+  if (me.getLocks()[me.getGesture()] !== me) {
+    return;
+  }
+  var chart = me.getChart(), surface = chart.getSurface('overlay'), rect = Ext.Array.slice(chart.getInnerRect()), padding = chart.getInnerPadding(), px = padding.left, py = padding.top, chartWidth = rect[2], chartHeight = rect[3], xy = chart.getEventXY(e), x = xy[0], y = xy[1], axes = chart.getAxes(), axis, axisPosition, axisAlignment, axisSurface, axisSprite, axisMatrix, axisLayoutContext, axisSegmenter, axisLabel, labelBBox, textPadding, xx, yy, dx, dy, xValue, yValue, text, i;
+  if (x < 0) {
+    x = 0;
+  } else {
+    if (x > chartWidth) {
+      x = chartWidth;
+    }
+  }
+  if (y < 0) {
+    y = 0;
+  } else {
+    if (y > chartHeight) {
+      y = chartHeight;
+    }
+  }
+  x += px;
+  y += py;
+  for (i = 0; i < axes.length; i++) {
+    axis = axes[i];
+    axisPosition = axis.getPosition();
+    axisAlignment = axis.getAlignment();
+    axisSurface = axis.getSurface();
+    axisSprite = axis.getSprites()[0];
+    axisMatrix = axisSprite.attr.matrix;
+    textPadding = axisSprite.attr.textPadding * 2;
+    axisLabel = me.axesLabels[axisPosition];
+    axisLayoutContext = axisSprite.getLayoutContext();
+    axisSegmenter = axis.getSegmenter();
+    if (axisLabel) {
+      if (axisAlignment === 'vertical') {
+        yy = axisMatrix.getYY();
+        dy = axisMatrix.getDY();
+        yValue = (y - dy - py) / yy;
+        if (axis.getLayout() instanceof Ext.chart.axis.layout.Discrete) {
+          y = Math.round(yValue) * yy + dy + py;
+          yValue = axisSegmenter.from(Math.round(yValue));
+          yValue = axisSprite.attr.data[yValue];
+        } else {
+          yValue = axisSegmenter.from(yValue);
+        }
+        text = axisSegmenter.renderer(yValue, axisLayoutContext);
+        axisLabel.setAttributes({translationY:y - py});
+        axisLabel.labelText.setAttributes({text:text});
+        labelBBox = axisLabel.labelText.getBBox();
+        axisLabel.labelRect.setAttributes({height:labelBBox.height + textPadding, y:-(labelBBox.height + textPadding) / 2});
+        axisSurface.renderFrame();
+      } else {
+        xx = axisMatrix.getXX();
+        dx = axisMatrix.getDX();
+        xValue = (x - dx - px) / xx;
+        if (axis.getLayout() instanceof Ext.chart.axis.layout.Discrete) {
+          x = Math.round(xValue) * xx + dx + px;
+          xValue = axisSegmenter.from(Math.round(xValue));
+          xValue = axisSprite.attr.data[xValue];
+        } else {
+          xValue = axisSegmenter.from(xValue);
+        }
+        text = axisSegmenter.renderer(xValue, axisLayoutContext);
+        axisLabel.setAttributes({translationX:x - px});
+        axisLabel.labelText.setAttributes({text:text});
+        labelBBox = axisLabel.labelText.getBBox();
+        axisLabel.labelRect.setAttributes({width:labelBBox.width + textPadding, x:-(labelBBox.width + textPadding) / 2});
+        axisSurface.renderFrame();
+      }
+    }
+  }
+  me.horizontalLine.setAttributes({y:y, strokeStyle:axisSprite.attr.strokeStyle});
+  me.verticalLine.setAttributes({x:x, strokeStyle:axisSprite.attr.strokeStyle});
+  surface.renderFrame();
+  return false;
+}, onGestureEnd:function(e) {
+  var me = this, chart = me.getChart(), surface = chart.getSurface('overlay'), axes = chart.getAxes(), axis, axisPosition, axisSurface, axisLabel, i;
+  surface.remove(me.verticalLine);
+  surface.remove(me.horizontalLine);
+  for (i = 0; i < axes.length; i++) {
+    axis = axes[i];
+    axisPosition = axis.getPosition();
+    axisSurface = axis.getSurface();
+    axisLabel = me.axesLabels[axisPosition];
+    if (axisLabel) {
+      delete me.axesLabels[axisPosition];
+      axisSurface.remove(axisLabel);
+    }
+    axisSurface.renderFrame();
+  }
+  surface.renderFrame();
+  me.unlockEvents(me.getGesture());
+}});
 Ext.define('Ext.chart.interactions.ItemHighlight', {extend:Ext.chart.interactions.Abstract, type:'itemhighlight', alias:'interaction.itemhighlight', isItemHighlight:true, config:{gestures:{tap:'onTapGesture', mousemove:'onMouseMoveGesture', mousedown:'onMouseDownGesture', mouseup:'onMouseUpGesture', mouseleave:'onMouseUpGesture'}, sticky:false}, stickyHighlightItem:null, onMouseMoveGesture:function(e) {
   var me = this, tipItem = me.tipItem, isMousePointer = e.pointerType === 'mouse', item, tooltip, chart;
   if (me.getSticky()) {
@@ -88396,6 +89806,362 @@ Ext.define('Ext.chart.interactions.ItemHighlight', {extend:Ext.chart.interaction
   }
   me.stickyHighlightItem = item;
   me.highlight(item);
+}});
+Ext.define('Ext.chart.interactions.ItemEdit', {extend:Ext.chart.interactions.ItemHighlight, type:'itemedit', alias:'interaction.itemedit', isItemEdit:true, config:{style:null, renderer:null, tooltip:true, gestures:{dragstart:'onDragStart', drag:'onDrag', dragend:'onDragEnd'}, cursors:{ewResize:'ew-resize', nsResize:'ns-resize', move:'move'}}, item:null, applyTooltip:function(tooltip) {
+  if (tooltip) {
+    var config = Ext.apply({}, tooltip, {renderer:this.defaultTooltipRenderer, constrainPosition:true, shrinkWrapDock:true, autoHide:true, offsetX:10, offsetY:10});
+    tooltip = new Ext.tip.ToolTip(config);
+  }
+  return tooltip;
+}, defaultTooltipRenderer:function(tooltip, item, target, e) {
+  var parts = [];
+  if (target.xField) {
+    parts.push(target.xField + ': ' + target.xValue);
+  }
+  if (target.yField) {
+    parts.push(target.yField + ': ' + target.yValue);
+  }
+  tooltip.setHtml(parts.join('\x3cbr\x3e'));
+}, onDragStart:function(e) {
+  var me = this, chart = me.getChart(), item = chart.getHighlightItem();
+  if (item) {
+    chart.fireEvent('beginitemedit', chart, me, me.item = item);
+    return false;
+  }
+}, onDrag:function(e) {
+  var me = this, chart = me.getChart(), item = chart.getHighlightItem(), type = item && item.sprite.type;
+  if (item) {
+    switch(type) {
+      case 'barSeries':
+        return me.onDragBar(e);
+        break;
+      case 'scatterSeries':
+        return me.onDragScatter(e);
+        break;
+    }
+  }
+}, highlight:function(item) {
+  var me = this, chart = me.getChart(), flipXY = chart.getFlipXY(), cursors = me.getCursors(), type = item && item.sprite.type, style = chart.el.dom.style;
+  me.callParent([item]);
+  if (item) {
+    switch(type) {
+      case 'barSeries':
+        if (flipXY) {
+          style.cursor = cursors.ewResize;
+        } else {
+          style.cursor = cursors.nsResize;
+        }
+        break;
+      case 'scatterSeries':
+        style.cursor = cursors.move;
+        break;
+    }
+  } else {
+    chart.el.dom.style.cursor = 'default';
+  }
+}, onDragBar:function(e) {
+  var me = this, chart = me.getChart(), isRtl = chart.getInherited().rtl, flipXY = chart.isCartesian && chart.getFlipXY(), item = chart.getHighlightItem(), marker = item.sprite.getMarker('items'), instance = marker.getMarkerFor(item.sprite.getId(), item.index), surface = item.sprite.getSurface(), surfaceRect = surface.getRect(), xy = surface.getEventXY(e), matrix = item.sprite.attr.matrix, renderer = me.getRenderer(), style, changes, params, positionY;
+  if (flipXY) {
+    positionY = isRtl ? surfaceRect[2] - xy[0] : xy[0];
+  } else {
+    positionY = surfaceRect[3] - xy[1];
+  }
+  style = {x:instance.x, y:positionY, width:instance.width, height:instance.height + (instance.y - positionY), radius:instance.radius, fillStyle:'none', lineDash:[4, 4], zIndex:100};
+  Ext.apply(style, me.getStyle());
+  if (Ext.isArray(item.series.getYField())) {
+    positionY = positionY - instance.y - instance.height;
+  }
+  me.target = {index:item.index, yField:item.field, yValue:(positionY - matrix.getDY()) / matrix.getYY()};
+  params = [chart, {target:me.target, style:style, item:item}];
+  changes = Ext.callback(renderer, null, params, 0, chart);
+  if (changes) {
+    Ext.apply(style, changes);
+  }
+  item.sprite.putMarker('items', style, 'itemedit');
+  me.showTooltip(e, me.target, item);
+  surface.renderFrame();
+}, onDragScatter:function(e) {
+  var me = this, chart = me.getChart(), isRtl = chart.getInherited().rtl, flipXY = chart.isCartesian && chart.getFlipXY(), item = chart.getHighlightItem(), marker = item.sprite.getMarker('items'), instance = marker.getMarkerFor(item.sprite.getId(), item.index), surface = item.sprite.getSurface(), surfaceRect = surface.getRect(), xy = surface.getEventXY(e), matrix = item.sprite.attr.matrix, xAxis = item.series.getXAxis(), isEditableX = xAxis && xAxis.getLayout().isContinuous, renderer = me.getRenderer(), 
+  style, changes, params, positionX, positionY;
+  if (flipXY) {
+    positionY = isRtl ? surfaceRect[2] - xy[0] : xy[0];
+  } else {
+    positionY = surfaceRect[3] - xy[1];
+  }
+  if (isEditableX) {
+    if (flipXY) {
+      positionX = surfaceRect[3] - xy[1];
+    } else {
+      positionX = xy[0];
+    }
+  } else {
+    positionX = instance.translationX;
+  }
+  style = {translationX:positionX, translationY:positionY, scalingX:instance.scalingX, scalingY:instance.scalingY, r:instance.r, fillStyle:'none', lineDash:[4, 4], zIndex:100};
+  Ext.apply(style, me.getStyle());
+  me.target = {index:item.index, yField:item.field, yValue:(positionY - matrix.getDY()) / matrix.getYY()};
+  if (isEditableX) {
+    Ext.apply(me.target, {xField:item.series.getXField(), xValue:(positionX - matrix.getDX()) / matrix.getXX()});
+  }
+  params = [chart, {target:me.target, style:style, item:item}];
+  changes = Ext.callback(renderer, null, params, 0, chart);
+  if (changes) {
+    Ext.apply(style, changes);
+  }
+  item.sprite.putMarker('items', style, 'itemedit');
+  me.showTooltip(e, me.target, item);
+  surface.renderFrame();
+}, showTooltip:function(e, target, item) {
+  var tooltip = this.getTooltip(), config, chart;
+  if (tooltip && Ext.toolkit !== 'modern') {
+    config = tooltip.config;
+    chart = this.getChart();
+    Ext.callback(config.renderer, null, [tooltip, item, target, e], 0, chart);
+    tooltip.show([e.x + config.offsetX, e.y + config.offsetY]);
+  }
+}, hideTooltip:function() {
+  var tooltip = this.getTooltip();
+  if (tooltip && Ext.toolkit !== 'modern') {
+    tooltip.hide();
+  }
+}, onDragEnd:function(e) {
+  var me = this, target = me.target, chart = me.getChart(), store = chart.getStore(), record;
+  if (target) {
+    record = store.getAt(target.index);
+    if (target.yField) {
+      record.set(target.yField, target.yValue, {convert:false});
+    }
+    if (target.xField) {
+      record.set(target.xField, target.xValue, {convert:false});
+    }
+    if (target.yField || target.xField) {
+      me.getChart().onDataChanged();
+    }
+    me.target = null;
+  }
+  me.hideTooltip();
+  if (me.item) {
+    chart.fireEvent('enditemedit', chart, me, me.item, target);
+  }
+  me.highlight(me.item = null);
+}, destroy:function() {
+  var tooltip = this.getConfig('tooltip', true);
+  Ext.destroy(tooltip);
+  this.callParent();
+}});
+Ext.define('Ext.chart.interactions.PanZoom', {extend:Ext.chart.interactions.Abstract, type:'panzoom', alias:'interaction.panzoom', config:{axes:{top:{}, right:{}, bottom:{}, left:{}}, minZoom:null, maxZoom:null, showOverflowArrows:true, panGesture:'drag', zoomGesture:'pinch', zoomOnPanGesture:false, modeToggleButton:{xtype:'segmentedbutton', width:200, defaults:{ui:'default-toolbar'}, cls:Ext.baseCSSPrefix + 'panzoom-toggle', items:[{text:'Pan'}, {text:'Zoom'}]}, hideLabelInGesture:false}, stopAnimationBeforeSync:true, 
+applyAxes:function(axesConfig, oldAxesConfig) {
+  return Ext.merge(oldAxesConfig || {}, axesConfig);
+}, applyZoomOnPanGesture:function(zoomOnPanGesture) {
+  this.getChart();
+  if (this.isMultiTouch()) {
+    return false;
+  }
+  return zoomOnPanGesture;
+}, updateZoomOnPanGesture:function(zoomOnPanGesture) {
+  var button = this.getModeToggleButton();
+  if (!this.isMultiTouch()) {
+    button.show();
+    button.setValue(zoomOnPanGesture ? 1 : 0);
+  } else {
+    button.hide();
+  }
+}, toggleMode:function() {
+  var me = this;
+  if (!me.isMultiTouch()) {
+    me.setZoomOnPanGesture(!me.getZoomOnPanGesture());
+  }
+}, applyModeToggleButton:function(button, oldButton) {
+  var me = this, result = Ext.factory(button, 'Ext.button.Segmented', oldButton);
+  if (!result && oldButton) {
+    oldButton.destroy();
+  }
+  if (result && !oldButton) {
+    result.addListener('toggle', function(segmentedButton) {
+      me.setZoomOnPanGesture(segmentedButton.getValue() === 1);
+    });
+  }
+  return result;
+}, getGestures:function() {
+  var me = this, gestures = {}, pan = me.getPanGesture(), zoom = me.getZoomGesture(), isTouch = Ext.supports.Touch;
+  gestures[zoom] = 'onZoomGestureMove';
+  gestures[zoom + 'start'] = 'onZoomGestureStart';
+  gestures[zoom + 'end'] = 'onZoomGestureEnd';
+  gestures[pan] = 'onPanGestureMove';
+  gestures[pan + 'start'] = 'onPanGestureStart';
+  gestures[pan + 'end'] = 'onPanGestureEnd';
+  gestures.doubletap = 'onDoubleTap';
+  return gestures;
+}, onDoubleTap:function(e) {
+  var me = this, chart = me.getChart(), axes = chart.getAxes(), axis, i, ln;
+  for (i = 0, ln = axes.length; i < ln; i++) {
+    axis = axes[i];
+    axis.setVisibleRange([0, 1]);
+  }
+  chart.redraw();
+}, onPanGestureStart:function(e) {
+  if (!e || !e.touches || e.touches.length < 2) {
+    var me = this, rect = me.getChart().getInnerRect(), xy = me.getChart().element.getXY();
+    me.startX = e.getX() - xy[0] - rect[0];
+    me.startY = e.getY() - xy[1] - rect[1];
+    me.oldVisibleRanges = null;
+    me.hideLabels();
+    me.getChart().suspendThicknessChanged();
+    me.lockEvents(me.getPanGesture());
+    return false;
+  }
+}, onPanGestureMove:function(e) {
+  var me = this;
+  if (me.getLocks()[me.getPanGesture()] === me) {
+    var rect = me.getChart().getInnerRect(), xy = me.getChart().element.getXY();
+    if (me.getZoomOnPanGesture()) {
+      me.transformAxesBy(me.getZoomableAxes(e), 0, 0, (e.getX() - xy[0] - rect[0]) / me.startX, me.startY / (e.getY() - xy[1] - rect[1]));
+    } else {
+      me.transformAxesBy(me.getPannableAxes(e), e.getX() - xy[0] - rect[0] - me.startX, e.getY() - xy[1] - rect[1] - me.startY, 1, 1);
+    }
+    me.sync();
+    return false;
+  }
+}, onPanGestureEnd:function(e) {
+  var me = this, pan = me.getPanGesture();
+  if (me.getLocks()[pan] === me) {
+    me.getChart().resumeThicknessChanged();
+    me.showLabels();
+    me.sync();
+    me.unlockEvents(pan);
+    return false;
+  }
+}, onZoomGestureStart:function(e) {
+  if (e.touches && e.touches.length === 2) {
+    var me = this, xy = me.getChart().element.getXY(), rect = me.getChart().getInnerRect(), x = xy[0] + rect[0], y = xy[1] + rect[1], newPoints = [e.touches[0].point.x - x, e.touches[0].point.y - y, e.touches[1].point.x - x, e.touches[1].point.y - y], xDistance = Math.max(44, Math.abs(newPoints[2] - newPoints[0])), yDistance = Math.max(44, Math.abs(newPoints[3] - newPoints[1]));
+    me.getChart().suspendThicknessChanged();
+    me.lastZoomDistances = [xDistance, yDistance];
+    me.lastPoints = newPoints;
+    me.oldVisibleRanges = null;
+    me.hideLabels();
+    me.lockEvents(me.getZoomGesture());
+    return false;
+  }
+}, onZoomGestureMove:function(e) {
+  var me = this;
+  if (me.getLocks()[me.getZoomGesture()] === me) {
+    var rect = me.getChart().getInnerRect(), xy = me.getChart().element.getXY(), x = xy[0] + rect[0], y = xy[1] + rect[1], abs = Math.abs, lastPoints = me.lastPoints, newPoints = [e.touches[0].point.x - x, e.touches[0].point.y - y, e.touches[1].point.x - x, e.touches[1].point.y - y], xDistance = Math.max(44, abs(newPoints[2] - newPoints[0])), yDistance = Math.max(44, abs(newPoints[3] - newPoints[1])), lastDistances = this.lastZoomDistances || [xDistance, yDistance], zoomX = xDistance / lastDistances[0], 
+    zoomY = yDistance / lastDistances[1];
+    me.transformAxesBy(me.getZoomableAxes(e), rect[2] * (zoomX - 1) / 2 + newPoints[2] - lastPoints[2] * zoomX, rect[3] * (zoomY - 1) / 2 + newPoints[3] - lastPoints[3] * zoomY, zoomX, zoomY);
+    me.sync();
+    return false;
+  }
+}, onZoomGestureEnd:function(e) {
+  var me = this, zoom = me.getZoomGesture();
+  if (me.getLocks()[zoom] === me) {
+    me.getChart().resumeThicknessChanged();
+    me.showLabels();
+    me.sync();
+    me.unlockEvents(zoom);
+    return false;
+  }
+}, hideLabels:function() {
+  if (this.getHideLabelInGesture()) {
+    this.eachInteractiveAxes(function(axis) {
+      axis.hideLabels();
+    });
+  }
+}, showLabels:function() {
+  if (this.getHideLabelInGesture()) {
+    this.eachInteractiveAxes(function(axis) {
+      axis.showLabels();
+    });
+  }
+}, isEventOnAxis:function(e, axis) {
+  var rect = axis.getSurface().getRect();
+  return rect[0] <= e.getX() && e.getX() <= rect[0] + rect[2] && rect[1] <= e.getY() && e.getY() <= rect[1] + rect[3];
+}, getPannableAxes:function(e) {
+  var me = this, axisConfigs = me.getAxes(), axes = me.getChart().getAxes(), i, ln = axes.length, result = [], isEventOnAxis = false, config;
+  if (e) {
+    for (i = 0; i < ln; i++) {
+      if (this.isEventOnAxis(e, axes[i])) {
+        isEventOnAxis = true;
+        break;
+      }
+    }
+  }
+  for (i = 0; i < ln; i++) {
+    config = axisConfigs[axes[i].getPosition()];
+    if (config && config.allowPan !== false && (!isEventOnAxis || this.isEventOnAxis(e, axes[i]))) {
+      result.push(axes[i]);
+    }
+  }
+  return result;
+}, getZoomableAxes:function(e) {
+  var me = this, axisConfigs = me.getAxes(), axes = me.getChart().getAxes(), result = [], i, ln = axes.length, axis, isEventOnAxis = false, config;
+  if (e) {
+    for (i = 0; i < ln; i++) {
+      if (this.isEventOnAxis(e, axes[i])) {
+        isEventOnAxis = true;
+        break;
+      }
+    }
+  }
+  for (i = 0; i < ln; i++) {
+    axis = axes[i];
+    config = axisConfigs[axis.getPosition()];
+    if (config && config.allowZoom !== false && (!isEventOnAxis || this.isEventOnAxis(e, axis))) {
+      result.push(axis);
+    }
+  }
+  return result;
+}, eachInteractiveAxes:function(fn) {
+  var me = this, axisConfigs = me.getAxes(), axes = me.getChart().getAxes();
+  for (var i = 0; i < axes.length; i++) {
+    if (axisConfigs[axes[i].getPosition()]) {
+      if (false === fn.call(this, axes[i])) {
+        return;
+      }
+    }
+  }
+}, transformAxesBy:function(axes, panX, panY, sx, sy) {
+  var rect = this.getChart().getInnerRect(), axesCfg = this.getAxes(), axisCfg, oldVisibleRanges = this.oldVisibleRanges, result = false;
+  if (!oldVisibleRanges) {
+    this.oldVisibleRanges = oldVisibleRanges = {};
+    this.eachInteractiveAxes(function(axis) {
+      oldVisibleRanges[axis.getId()] = axis.getVisibleRange();
+    });
+  }
+  if (!rect) {
+    return;
+  }
+  for (var i = 0; i < axes.length; i++) {
+    axisCfg = axesCfg[axes[i].getPosition()];
+    result = this.transformAxisBy(axes[i], oldVisibleRanges[axes[i].getId()], panX, panY, sx, sy, this.minZoom || axisCfg.minZoom, this.maxZoom || axisCfg.maxZoom) || result;
+  }
+  return result;
+}, transformAxisBy:function(axis, oldVisibleRange, panX, panY, sx, sy, minZoom, maxZoom) {
+  var me = this, visibleLength = oldVisibleRange[1] - oldVisibleRange[0], visibleRange = axis.getVisibleRange(), actualMinZoom = minZoom || me.getMinZoom() || axis.config.minZoom, actualMaxZoom = maxZoom || me.getMaxZoom() || axis.config.maxZoom, rect = me.getChart().getInnerRect(), left, right;
+  if (!rect) {
+    return;
+  }
+  var isSide = axis.isSide(), length = isSide ? rect[3] : rect[2], pan = isSide ? -panY : panX;
+  visibleLength /= isSide ? sy : sx;
+  if (visibleLength < 0) {
+    visibleLength = -visibleLength;
+  }
+  if (visibleLength * actualMinZoom > 1) {
+    visibleLength = 1;
+  }
+  if (visibleLength * actualMaxZoom < 1) {
+    visibleLength = 1 / actualMaxZoom;
+  }
+  left = oldVisibleRange[0];
+  right = oldVisibleRange[1];
+  visibleRange = visibleRange[1] - visibleRange[0];
+  if (visibleLength === visibleRange && visibleRange === 1) {
+    return;
+  }
+  axis.setVisibleRange([(oldVisibleRange[0] + oldVisibleRange[1] - visibleLength) * 0.5 - pan / length * visibleLength, (oldVisibleRange[0] + oldVisibleRange[1] + visibleLength) * 0.5 - pan / length * visibleLength]);
+  return Math.abs(left - axis.getVisibleRange()[0]) > 1.0E-10 || Math.abs(right - axis.getVisibleRange()[1]) > 1.0E-10;
+}, destroy:function() {
+  this.setModeToggleButton(null);
+  this.callParent();
 }});
 Ext.define('Ext.chart.interactions.Rotate', {extend:Ext.chart.interactions.Abstract, type:'rotate', alias:'interaction.rotate', config:{gesture:'rotate', gestures:{rotate:'onRotate', rotateend:'onRotate', dragstart:'onGestureStart', drag:'onGesture', dragend:'onGestureEnd'}, rotation:0}, oldRotations:null, getAngle:function(e) {
   var me = this, chart = me.getChart(), xy = chart.getEventXY(e), center = chart.getCenter();
@@ -88469,6 +90235,1151 @@ Ext.define('Ext.chart.interactions.RotatePie3D', {extend:Ext.chart.interactions.
   }
   return radius;
 }});
+Ext.define('Ext.chart.plugin.ItemEvents', {extend:Ext.plugin.Abstract, alias:'plugin.chartitemevents', moveEvents:false, mouseMoveEvents:{mousemove:true, mouseover:true, mouseout:true}, itemMouseMoveEvents:{itemmousemove:true, itemmouseover:true, itemmouseout:true}, init:function(chart) {
+  var handleEvent = 'handleEvent';
+  this.chart = chart;
+  chart.addElementListener({click:handleEvent, dblclick:handleEvent, mousedown:handleEvent, mousemove:handleEvent, mouseup:handleEvent, mouseover:handleEvent, mouseout:handleEvent, priority:1001, scope:this});
+}, hasItemMouseMoveListeners:function() {
+  var listeners = this.chart.hasListeners, name;
+  for (name in this.itemMouseMoveEvents) {
+    if (name in listeners) {
+      return true;
+    }
+  }
+  return false;
+}, handleEvent:function(e) {
+  var me = this, chart = me.chart, isMouseMoveEvent = e.type in me.mouseMoveEvents, lastItem = me.lastItem, chartXY, item;
+  if (isMouseMoveEvent && !me.hasItemMouseMoveListeners() && !me.moveEvents) {
+    return;
+  }
+  chartXY = chart.getEventXY(e);
+  item = chart.getItemForPoint(chartXY[0], chartXY[1]);
+  if (isMouseMoveEvent && !Ext.Object.equals(item, lastItem)) {
+    if (lastItem) {
+      chart.fireEvent('itemmouseout', chart, lastItem, e);
+      lastItem.series.fireEvent('itemmouseout', lastItem.series, lastItem, e);
+    }
+    if (item) {
+      chart.fireEvent('itemmouseover', chart, item, e);
+      item.series.fireEvent('itemmouseover', item.series, item, e);
+    }
+  }
+  if (item) {
+    chart.fireEvent('item' + e.type, chart, item, e);
+    item.series.fireEvent('item' + e.type, item.series, item, e);
+  }
+  me.lastItem = item;
+}});
+Ext.define('Ext.chart.series.Cartesian', {extend:Ext.chart.series.Series, config:{xField:null, yField:null, xAxis:null, yAxis:null}, directions:['X', 'Y'], fieldCategoryX:['X'], fieldCategoryY:['Y'], applyXAxis:function(newAxis, oldAxis) {
+  return this.getChart().getAxis(newAxis) || oldAxis;
+}, applyYAxis:function(newAxis, oldAxis) {
+  return this.getChart().getAxis(newAxis) || oldAxis;
+}, updateXAxis:function(axis) {
+  axis.processData(this);
+}, updateYAxis:function(axis) {
+  axis.processData(this);
+}, coordinateX:function() {
+  return this.coordinate('X', 0, 2);
+}, coordinateY:function() {
+  return this.coordinate('Y', 1, 2);
+}, getItemForPoint:function(x, y) {
+  if (this.getSprites()) {
+    var me = this, sprite = me.getSprites()[0], store = me.getStore(), item, index;
+    if (me.getHidden()) {
+      return null;
+    }
+    if (sprite) {
+      index = sprite.getIndexNearPoint(x, y);
+      if (index !== -1) {
+        item = {series:me, category:me.getItemInstancing() ? 'items' : 'markers', index:index, record:store.getData().items[index], field:me.getYField(), sprite:sprite};
+        return item;
+      }
+    }
+  }
+}, createSprite:function() {
+  var me = this, sprite = me.callParent(), chart = me.getChart(), xAxis = me.getXAxis();
+  sprite.setAttributes({flipXY:chart.getFlipXY(), xAxis:xAxis});
+  if (sprite.setAggregator && xAxis && xAxis.getAggregator) {
+    if (xAxis.getAggregator) {
+      sprite.setAggregator({strategy:xAxis.getAggregator()});
+    } else {
+      sprite.setAggregator({});
+    }
+  }
+  return sprite;
+}, getSprites:function() {
+  var me = this, chart = this.getChart(), animation = me.getAnimation() || chart && chart.getAnimation(), itemInstancing = me.getItemInstancing(), sprites = me.sprites, sprite;
+  if (!chart) {
+    return [];
+  }
+  if (!sprites.length) {
+    sprite = me.createSprite();
+  } else {
+    sprite = sprites[0];
+  }
+  if (animation) {
+    if (itemInstancing) {
+      sprite.itemsMarker.getTemplate().setAnimation(animation);
+    }
+    sprite.setAnimation(animation);
+  }
+  return sprites;
+}, provideLegendInfo:function(target) {
+  var me = this, style = me.getSubStyleWithTheme(), fill = style.fillStyle;
+  if (Ext.isArray(fill)) {
+    fill = fill[0];
+  }
+  target.push({name:me.getTitle() || me.getYField() || me.getId(), mark:(Ext.isObject(fill) ? fill.stops && fill.stops[0].color : fill) || style.strokeStyle || 'black', disabled:me.getHidden(), series:me.getId(), index:0});
+}, getXRange:function() {
+  return [this.dataRange[0], this.dataRange[2]];
+}, getYRange:function() {
+  return [this.dataRange[1], this.dataRange[3]];
+}});
+Ext.define('Ext.chart.series.StackedCartesian', {extend:Ext.chart.series.Cartesian, config:{stacked:true, splitStacks:true, fullStack:false, fullStackTotal:100, hidden:[]}, spriteAnimationCount:0, themeColorCount:function() {
+  var me = this, yField = me.getYField();
+  return Ext.isArray(yField) ? yField.length : 1;
+}, updateStacked:function() {
+  this.processData();
+}, updateSplitStacks:function() {
+  this.processData();
+}, coordinateY:function() {
+  return this.coordinateStacked('Y', 1, 2);
+}, coordinateStacked:function(direction, directionOffset, directionCount) {
+  var me = this, store = me.getStore(), items = store.getData().items, itemCount = items.length, axis = me['get' + direction + 'Axis'](), hidden = me.getHidden(), splitStacks = me.getSplitStacks(), fullStack = me.getFullStack(), fullStackTotal = me.getFullStackTotal(), range = {min:0, max:0}, directions = me['fieldCategory' + direction], dataStart = [], posDataStart = [], negDataStart = [], dataEnd, stacked = me.getStacked(), sprites = me.getSprites(), coordinatedData = [], i, j, k, fields, fieldCount, 
+  posTotals, negTotals, fieldCategoriesItem, data, attr;
+  if (!sprites.length) {
+    return;
+  }
+  for (i = 0; i < directions.length; i++) {
+    fieldCategoriesItem = directions[i];
+    fields = me.getFields([fieldCategoriesItem]);
+    fieldCount = fields.length;
+    for (j = 0; j < itemCount; j++) {
+      dataStart[j] = 0;
+      posDataStart[j] = 0;
+      negDataStart[j] = 0;
+    }
+    for (j = 0; j < fieldCount; j++) {
+      if (!hidden[j]) {
+        coordinatedData[j] = me.coordinateData(items, fields[j], axis);
+      }
+    }
+    if (stacked && fullStack) {
+      posTotals = [];
+      if (splitStacks) {
+        negTotals = [];
+      }
+      for (j = 0; j < itemCount; j++) {
+        posTotals[j] = 0;
+        if (splitStacks) {
+          negTotals[j] = 0;
+        }
+        for (k = 0; k < fieldCount; k++) {
+          data = coordinatedData[k];
+          if (!data) {
+            continue;
+          }
+          data = data[j];
+          if (data >= 0 || !splitStacks) {
+            posTotals[j] += data;
+          } else {
+            if (data < 0) {
+              negTotals[j] += data;
+            }
+          }
+        }
+      }
+    }
+    for (j = 0; j < fieldCount; j++) {
+      attr = {};
+      if (hidden[j]) {
+        attr['dataStart' + fieldCategoriesItem] = dataStart;
+        attr['data' + fieldCategoriesItem] = dataStart;
+        sprites[j].setAttributes(attr);
+        continue;
+      }
+      data = coordinatedData[j];
+      if (stacked) {
+        dataEnd = [];
+        for (k = 0; k < itemCount; k++) {
+          if (!data[k]) {
+            data[k] = 0;
+          }
+          if (data[k] >= 0 || !splitStacks) {
+            if (fullStack && posTotals[k]) {
+              data[k] *= fullStackTotal / posTotals[k];
+            }
+            dataStart[k] = posDataStart[k];
+            posDataStart[k] += data[k];
+            dataEnd[k] = posDataStart[k];
+          } else {
+            if (fullStack && negTotals[k]) {
+              data[k] *= fullStackTotal / negTotals[k];
+            }
+            dataStart[k] = negDataStart[k];
+            negDataStart[k] += data[k];
+            dataEnd[k] = negDataStart[k];
+          }
+        }
+        attr['dataStart' + fieldCategoriesItem] = dataStart;
+        attr['data' + fieldCategoriesItem] = dataEnd;
+        me.getRangeOfData(dataStart, range);
+        me.getRangeOfData(dataEnd, range);
+      } else {
+        attr['dataStart' + fieldCategoriesItem] = dataStart;
+        attr['data' + fieldCategoriesItem] = data;
+        me.getRangeOfData(data, range);
+      }
+      sprites[j].setAttributes(attr);
+    }
+  }
+  me.dataRange[directionOffset] = range.min;
+  me.dataRange[directionOffset + directionCount] = range.max;
+  attr = {};
+  attr['dataMin' + direction] = range.min;
+  attr['dataMax' + direction] = range.max;
+  for (i = 0; i < sprites.length; i++) {
+    sprites[i].setAttributes(attr);
+  }
+}, getFields:function(fieldCategory) {
+  var me = this, fields = [], fieldsItem, i, ln;
+  for (i = 0, ln = fieldCategory.length; i < ln; i++) {
+    fieldsItem = me['get' + fieldCategory[i] + 'Field']();
+    if (Ext.isArray(fieldsItem)) {
+      fields.push.apply(fields, fieldsItem);
+    } else {
+      fields.push(fieldsItem);
+    }
+  }
+  return fields;
+}, updateLabelOverflowPadding:function(labelOverflowPadding) {
+  this.getLabel().setAttributes({labelOverflowPadding:labelOverflowPadding});
+}, getSprites:function() {
+  var me = this, chart = me.getChart(), animation = me.getAnimation() || chart && chart.getAnimation(), fields = me.getFields(me.fieldCategoryY), itemInstancing = me.getItemInstancing(), sprites = me.sprites, sprite, hidden = me.getHidden(), spritesCreated = false, i, length = fields.length;
+  if (!chart) {
+    return [];
+  }
+  for (i = 0; i < length; i++) {
+    sprite = sprites[i];
+    if (!sprite) {
+      sprite = me.createSprite();
+      sprite.setAttributes({zIndex:-i});
+      sprite.setField(fields[i]);
+      spritesCreated = true;
+      hidden.push(false);
+      if (itemInstancing) {
+        sprite.itemsMarker.getTemplate().setAttributes(me.getStyleByIndex(i));
+      } else {
+        sprite.setAttributes(me.getStyleByIndex(i));
+      }
+    }
+    if (animation) {
+      if (itemInstancing) {
+        sprite.itemsMarker.getTemplate().setAnimation(animation);
+      }
+      sprite.setAnimation(animation);
+    }
+  }
+  if (spritesCreated) {
+    me.updateHidden(hidden);
+  }
+  return sprites;
+}, getItemForPoint:function(x, y) {
+  if (this.getSprites()) {
+    var me = this, i, ln, sprite, itemInstancing = me.getItemInstancing(), sprites = me.getSprites(), store = me.getStore(), hidden = me.getHidden(), item, index, yField;
+    for (i = 0, ln = sprites.length; i < ln; i++) {
+      if (!hidden[i]) {
+        sprite = sprites[i];
+        index = sprite.getIndexNearPoint(x, y);
+        if (index !== -1) {
+          yField = me.getYField();
+          item = {series:me, index:index, category:itemInstancing ? 'items' : 'markers', record:store.getData().items[index], field:typeof yField === 'string' ? yField : yField[i], sprite:sprite};
+          return item;
+        }
+      }
+    }
+    return null;
+  }
+}, provideLegendInfo:function(target) {
+  var me = this, sprites = me.getSprites(), title = me.getTitle(), field = me.getYField(), hidden = me.getHidden(), single = sprites.length === 1, style, fill, i, name;
+  for (i = 0; i < sprites.length; i++) {
+    style = me.getStyleByIndex(i);
+    fill = style.fillStyle;
+    if (title) {
+      if (Ext.isArray(title)) {
+        name = title[i];
+      } else {
+        if (single) {
+          name = title;
+        }
+      }
+    } else {
+      if (Ext.isArray(field)) {
+        name = field[i];
+      } else {
+        name = me.getId();
+      }
+    }
+    target.push({name:name, mark:(Ext.isObject(fill) ? fill.stops && fill.stops[0].color : fill) || style.strokeStyle || 'black', disabled:hidden[i], series:me.getId(), index:i});
+  }
+}, onSpriteAnimationStart:function(sprite) {
+  this.spriteAnimationCount++;
+  if (this.spriteAnimationCount === 1) {
+    this.fireEvent('animationstart');
+  }
+}, onSpriteAnimationEnd:function(sprite) {
+  this.spriteAnimationCount--;
+  if (this.spriteAnimationCount === 0) {
+    this.fireEvent('animationend');
+  }
+}});
+Ext.define('Ext.chart.series.sprite.Series', {extend:Ext.draw.sprite.Sprite, mixins:{markerHolder:Ext.chart.MarkerHolder}, inheritableStatics:{def:{processors:{dataMinX:'number', dataMaxX:'number', dataMinY:'number', dataMaxY:'number', rangeX:'data', rangeY:'data', dataX:'data', dataY:'data'}, defaults:{dataMinX:0, dataMaxX:1, dataMinY:0, dataMaxY:1, rangeX:null, rangeY:null, dataX:null, dataY:null}, triggers:{dataX:'bbox', dataY:'bbox', dataMinX:'bbox', dataMaxX:'bbox', dataMinY:'bbox', dataMaxY:'bbox'}}}, 
+config:{store:null, series:null, field:null}});
+Ext.define('Ext.chart.series.sprite.Cartesian', {extend:Ext.chart.series.sprite.Series, inheritableStatics:{def:{processors:{labels:'default', labelOverflowPadding:'number', selectionTolerance:'number', flipXY:'bool', renderer:'default', visibleMinX:'number', visibleMinY:'number', visibleMaxX:'number', visibleMaxY:'number', innerWidth:'number', innerHeight:'number'}, defaults:{labels:null, labelOverflowPadding:10, selectionTolerance:20, flipXY:false, renderer:null, transformFillStroke:false, visibleMinX:0, 
+visibleMinY:0, visibleMaxX:1, visibleMaxY:1, innerWidth:1, innerHeight:1}, triggers:{dataX:'dataX,bbox', dataY:'dataY,bbox', visibleMinX:'panzoom', visibleMinY:'panzoom', visibleMaxX:'panzoom', visibleMaxY:'panzoom', innerWidth:'panzoom', innerHeight:'panzoom'}, updaters:{dataX:function(attr) {
+  this.processDataX();
+  this.scheduleUpdater(attr, 'dataY', ['dataY']);
+}, dataY:function() {
+  this.processDataY();
+}, panzoom:function(attr) {
+  var dx = attr.visibleMaxX - attr.visibleMinX, dy = attr.visibleMaxY - attr.visibleMinY, innerWidth = attr.flipXY ? attr.innerHeight : attr.innerWidth, innerHeight = !attr.flipXY ? attr.innerHeight : attr.innerWidth, surface = this.getSurface(), isRtl = surface ? surface.getInherited().rtl : false;
+  if (isRtl && !attr.flipXY) {
+    attr.translationX = innerWidth + attr.visibleMinX * innerWidth / dx;
+  } else {
+    attr.translationX = -attr.visibleMinX * innerWidth / dx;
+  }
+  attr.translationY = -attr.visibleMinY * innerHeight / dy;
+  attr.scalingX = (isRtl && !attr.flipXY ? -1 : 1) * innerWidth / dx;
+  attr.scalingY = innerHeight / dy;
+  attr.scalingCenterX = 0;
+  attr.scalingCenterY = 0;
+  this.applyTransformations(true);
+}}}}, processDataY:Ext.emptyFn, processDataX:Ext.emptyFn, updatePlainBBox:function(plain) {
+  var attr = this.attr;
+  plain.x = attr.dataMinX;
+  plain.y = attr.dataMinY;
+  plain.width = attr.dataMaxX - attr.dataMinX;
+  plain.height = attr.dataMaxY - attr.dataMinY;
+}, binarySearch:function(key) {
+  var dx = this.attr.dataX, start = 0, end = dx.length;
+  if (key <= dx[0]) {
+    return start;
+  }
+  if (key >= dx[end - 1]) {
+    return end - 1;
+  }
+  while (start + 1 < end) {
+    var mid = start + end >> 1, val = dx[mid];
+    if (val === key) {
+      return mid;
+    } else {
+      if (val < key) {
+        start = mid;
+      } else {
+        end = mid;
+      }
+    }
+  }
+  return start;
+}, render:function(surface, ctx, rect) {
+  var me = this, attr = me.attr, inverseMatrix = attr.inverseMatrix.clone();
+  inverseMatrix.appendMatrix(surface.inverseMatrix);
+  if (attr.dataX === null || attr.dataX === undefined) {
+    return;
+  }
+  if (attr.dataY === null || attr.dataY === undefined) {
+    return;
+  }
+  if (inverseMatrix.getXX() * inverseMatrix.getYX() || inverseMatrix.getXY() * inverseMatrix.getYY()) {
+    console.log('Cartesian Series sprite does not support rotation/sheering');
+    return;
+  }
+  var clip = inverseMatrix.transformList([[rect[0] - 1, rect[3] + 1], [rect[0] + rect[2] + 1, -1]]);
+  clip = clip[0].concat(clip[1]);
+  me.renderClipped(surface, ctx, clip, rect);
+}, renderClipped:Ext.emptyFn, getIndexNearPoint:function(x, y) {
+  var me = this, mat = me.attr.matrix, dataX = me.attr.dataX, dataY = me.attr.dataY, selectionTolerance = me.attr.selectionTolerance, minX, minY, index = -1, imat = mat.clone().prependMatrix(me.surfaceMatrix).inverse(), center = imat.transformPoint([x, y]), positionLB = imat.transformPoint([x - selectionTolerance, y - selectionTolerance]), positionTR = imat.transformPoint([x + selectionTolerance, y + selectionTolerance]), left = Math.min(positionLB[0], positionTR[0]), right = Math.max(positionLB[0], 
+  positionTR[0]), top = Math.min(positionLB[1], positionTR[1]), bottom = Math.max(positionLB[1], positionTR[1]), xi, yi, i, len;
+  for (i = 0, len = dataX.length; i < len; i++) {
+    xi = dataX[i];
+    yi = dataY[i];
+    if (xi > left && xi < right && yi > top && yi < bottom) {
+      if (index === -1 || Math.abs(xi - center[0]) < minX && Math.abs(yi - center[1]) < minY) {
+        minX = Math.abs(xi - center[0]);
+        minY = Math.abs(yi - center[1]);
+        index = i;
+      }
+    }
+  }
+  return index;
+}});
+Ext.define('Ext.chart.series.sprite.StackedCartesian', {extend:Ext.chart.series.sprite.Cartesian, inheritableStatics:{def:{processors:{groupCount:'number', groupOffset:'number', dataStartY:'data'}, defaults:{selectionTolerance:20, groupCount:1, groupOffset:0, dataStartY:null}, triggers:{dataStartY:'dataY,bbox'}}}, getIndexNearPoint:function(x, y) {
+  var sprite = this, mat = sprite.attr.matrix, dataX = sprite.attr.dataX, dataY = sprite.attr.dataY, dataStartY = sprite.attr.dataStartY, selectionTolerance = sprite.attr.selectionTolerance, minX = 0.5, minY = Infinity, index = -1, imat = mat.clone().prependMatrix(this.surfaceMatrix).inverse(), center = imat.transformPoint([x, y]), positionLB = imat.transformPoint([x - selectionTolerance, y - selectionTolerance]), positionTR = imat.transformPoint([x + selectionTolerance, y + selectionTolerance]), 
+  top = Math.min(positionLB[1], positionTR[1]), bottom = Math.max(positionLB[1], positionTR[1]), dx, dy;
+  for (var i = 0; i < dataX.length; i++) {
+    if (Math.min(dataStartY[i], dataY[i]) <= bottom && top <= Math.max(dataStartY[i], dataY[i])) {
+      dx = Math.abs(dataX[i] - center[0]);
+      dy = Math.max(-Math.min(dataY[i] - center[1], center[1] - dataStartY[i]), 0);
+      if (dx < minX && dy <= minY) {
+        minX = dx;
+        minY = dy;
+        index = i;
+      }
+    }
+  }
+  return index;
+}});
+Ext.define('Ext.chart.series.sprite.Area', {alias:'sprite.areaSeries', extend:Ext.chart.series.sprite.StackedCartesian, inheritableStatics:{def:{processors:{step:'bool'}, defaults:{step:false}}}, renderClipped:function(surface, ctx, clip) {
+  var me = this, attr = me.attr, dataX = attr.dataX, dataY = attr.dataY, dataStartY = attr.dataStartY, matrix = attr.matrix, x, y, i, lastX, lastY, startX, startY, xx = matrix.elements[0], dx = matrix.elements[4], yy = matrix.elements[3], dy = matrix.elements[5], surfaceMatrix = me.surfaceMatrix, markerCfg = {}, min = Math.min(clip[0], clip[2]), max = Math.max(clip[0], clip[2]), start = Math.max(0, this.binarySearch(min)), end = Math.min(dataX.length - 1, this.binarySearch(max) + 1);
+  ctx.beginPath();
+  startX = dataX[start] * xx + dx;
+  startY = dataY[start] * yy + dy;
+  ctx.moveTo(startX, startY);
+  if (attr.step) {
+    lastY = startY;
+    for (i = start; i <= end; i++) {
+      x = dataX[i] * xx + dx;
+      y = dataY[i] * yy + dy;
+      ctx.lineTo(x, lastY);
+      ctx.lineTo(x, lastY = y);
+    }
+  } else {
+    for (i = start; i <= end; i++) {
+      x = dataX[i] * xx + dx;
+      y = dataY[i] * yy + dy;
+      ctx.lineTo(x, y);
+    }
+  }
+  if (dataStartY) {
+    if (attr.step) {
+      lastX = dataX[end] * xx + dx;
+      for (i = end; i >= start; i--) {
+        x = dataX[i] * xx + dx;
+        y = dataStartY[i] * yy + dy;
+        ctx.lineTo(lastX, y);
+        ctx.lineTo(lastX = x, y);
+      }
+    } else {
+      for (i = end; i >= start; i--) {
+        x = dataX[i] * xx + dx;
+        y = dataStartY[i] * yy + dy;
+        ctx.lineTo(x, y);
+      }
+    }
+  } else {
+    ctx.lineTo(dataX[end] * xx + dx, y);
+    ctx.lineTo(dataX[end] * xx + dx, dy);
+    ctx.lineTo(startX, dy);
+    ctx.lineTo(startX, dataY[i] * yy + dy);
+  }
+  if (attr.transformFillStroke) {
+    attr.matrix.toContext(ctx);
+  }
+  ctx.fill();
+  if (attr.transformFillStroke) {
+    attr.inverseMatrix.toContext(ctx);
+  }
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  if (attr.step) {
+    for (i = start; i <= end; i++) {
+      x = dataX[i] * xx + dx;
+      y = dataY[i] * yy + dy;
+      ctx.lineTo(x, lastY);
+      ctx.lineTo(x, lastY = y);
+      markerCfg.translationX = surfaceMatrix.x(x, y);
+      markerCfg.translationY = surfaceMatrix.y(x, y);
+      me.putMarker('markers', markerCfg, i, !attr.renderer);
+    }
+  } else {
+    for (i = start; i <= end; i++) {
+      x = dataX[i] * xx + dx;
+      y = dataY[i] * yy + dy;
+      ctx.lineTo(x, y);
+      markerCfg.translationX = surfaceMatrix.x(x, y);
+      markerCfg.translationY = surfaceMatrix.y(x, y);
+      me.putMarker('markers', markerCfg, i, !attr.renderer);
+    }
+  }
+  if (attr.transformFillStroke) {
+    attr.matrix.toContext(ctx);
+  }
+  ctx.stroke();
+}});
+Ext.define('Ext.chart.series.Area', {extend:Ext.chart.series.StackedCartesian, alias:'series.area', type:'area', seriesType:'areaSeries', config:{splitStacks:false}});
+Ext.define('Ext.chart.series.sprite.Bar', {alias:'sprite.barSeries', extend:Ext.chart.series.sprite.StackedCartesian, inheritableStatics:{def:{processors:{minBarWidth:'number', maxBarWidth:'number', minGapWidth:'number', radius:'number', inGroupGapWidth:'number'}, defaults:{minBarWidth:2, maxBarWidth:100, minGapWidth:5, inGroupGapWidth:3, radius:0}}}, drawLabel:function(text, dataX, dataStartY, dataY, labelId) {
+  var me = this, attr = me.attr, label = me.getMarker('labels'), labelTpl = label.getTemplate(), labelCfg = me.labelCfg || (me.labelCfg = {}), surfaceMatrix = me.surfaceMatrix, labelOverflowPadding = attr.labelOverflowPadding, labelDisplay = labelTpl.attr.display, labelOrientation = labelTpl.attr.orientation, labelY, halfWidth, labelBBox, changes, hasPendingChanges, params;
+  labelCfg.x = surfaceMatrix.x(dataX, dataY);
+  labelCfg.y = surfaceMatrix.y(dataX, dataY);
+  if (!attr.flipXY) {
+    labelCfg.rotationRads = -Math.PI * 0.5;
+  } else {
+    labelCfg.rotationRads = 0;
+  }
+  labelCfg.calloutVertical = !attr.flipXY;
+  switch(labelOrientation) {
+    case 'horizontal':
+      labelCfg.rotationRads = 0;
+      labelCfg.calloutVertical = false;
+      break;
+    case 'vertical':
+      labelCfg.rotationRads = -Math.PI * 0.5;
+      labelCfg.calloutVertical = true;
+      break;
+  }
+  labelCfg.text = text;
+  if (labelTpl.attr.renderer) {
+    params = [text, label, labelCfg, {store:me.getStore()}, labelId];
+    changes = Ext.callback(labelTpl.attr.renderer, null, params, 0, me.getSeries());
+    if (typeof changes === 'string') {
+      labelCfg.text = changes;
+    } else {
+      if (typeof changes === 'object') {
+        if ('text' in changes) {
+          labelCfg.text = changes.text;
+        }
+        hasPendingChanges = true;
+      }
+    }
+  }
+  labelBBox = me.getMarkerBBox('labels', labelId, true);
+  if (!labelBBox) {
+    me.putMarker('labels', labelCfg, labelId);
+    labelBBox = me.getMarkerBBox('labels', labelId, true);
+  }
+  halfWidth = labelBBox.width / 2 + labelOverflowPadding;
+  if (dataStartY > dataY) {
+    halfWidth = -halfWidth;
+  }
+  if (labelOrientation === 'horizontal' && attr.flipXY || labelOrientation === 'vertical' && !attr.flipXY || !labelOrientation) {
+    labelY = labelDisplay === 'insideStart' ? dataStartY + halfWidth : dataY - halfWidth;
+  } else {
+    labelY = labelDisplay === 'insideStart' ? dataStartY + labelOverflowPadding * 2 : dataY - labelOverflowPadding * 2;
+  }
+  labelCfg.x = surfaceMatrix.x(dataX, labelY);
+  labelCfg.y = surfaceMatrix.y(dataX, labelY);
+  labelY = labelDisplay === 'insideStart' ? dataStartY - halfWidth : dataY + halfWidth;
+  labelCfg.calloutPlaceX = surfaceMatrix.x(dataX, labelY);
+  labelCfg.calloutPlaceY = surfaceMatrix.y(dataX, labelY);
+  labelY = labelDisplay === 'insideStart' ? dataStartY : dataY;
+  labelCfg.calloutStartX = surfaceMatrix.x(dataX, labelY);
+  labelCfg.calloutStartY = surfaceMatrix.y(dataX, labelY);
+  if (dataStartY > dataY) {
+    halfWidth = -halfWidth;
+  }
+  if (Math.abs(dataY - dataStartY) <= halfWidth * 2 || labelDisplay === 'outside') {
+    labelCfg.callout = 1;
+  } else {
+    labelCfg.callout = 0;
+  }
+  if (hasPendingChanges) {
+    Ext.apply(labelCfg, changes);
+  }
+  me.putMarker('labels', labelCfg, labelId);
+}, drawBar:function(ctx, surface, clip, left, top, right, bottom, index) {
+  var me = this, itemCfg = {}, renderer = me.attr.renderer, changes;
+  itemCfg.x = left;
+  itemCfg.y = top;
+  itemCfg.width = right - left;
+  itemCfg.height = bottom - top;
+  itemCfg.radius = me.attr.radius;
+  if (renderer) {
+    changes = Ext.callback(renderer, null, [me, itemCfg, {store:me.getStore()}, index], 0, me.getSeries());
+    Ext.apply(itemCfg, changes);
+  }
+  me.putMarker('items', itemCfg, index, !renderer);
+}, renderClipped:function(surface, ctx, clip, rect) {
+  if (this.cleanRedraw) {
+    return;
+  }
+  var me = this, attr = me.attr, dataX = attr.dataX, dataY = attr.dataY, dataText = attr.labels, dataStartY = attr.dataStartY, groupCount = attr.groupCount, groupOffset = attr.groupOffset - (groupCount - 1) * 0.5, inGroupGapWidth = attr.inGroupGapWidth, lineWidth = ctx.lineWidth, matrix = attr.matrix, xx = matrix.elements[0], yy = matrix.elements[3], dx = matrix.elements[4], dy = surface.roundPixel(matrix.elements[5]) - 1, maxBarWidth = (xx < 0 ? -1 : 1) * xx - attr.minGapWidth, minBarWidth = (Math.min(maxBarWidth, 
+  attr.maxBarWidth) - inGroupGapWidth * (groupCount - 1)) / groupCount, barWidth = surface.roundPixel(Math.max(attr.minBarWidth, minBarWidth)), surfaceMatrix = me.surfaceMatrix, left, right, bottom, top, i, center, halfLineWidth = 0.5 * attr.lineWidth, min = Math.min(clip[0], clip[2]), max = Math.max(clip[0], clip[2]), start = Math.max(0, Math.floor(min)), end = Math.min(dataX.length - 1, Math.ceil(max)), isDrawLabels = dataText && me.getMarker('labels'), yLow, yHi;
+  for (i = start; i <= end; i++) {
+    yLow = dataStartY ? dataStartY[i] : 0;
+    yHi = dataY[i];
+    center = dataX[i] * xx + dx + groupOffset * (barWidth + inGroupGapWidth);
+    left = surface.roundPixel(center - barWidth / 2) + halfLineWidth;
+    top = surface.roundPixel(yHi * yy + dy + lineWidth);
+    right = surface.roundPixel(center + barWidth / 2) - halfLineWidth;
+    bottom = surface.roundPixel(yLow * yy + dy + lineWidth);
+    me.drawBar(ctx, surface, clip, left, top - halfLineWidth, right, bottom - halfLineWidth, i);
+    if (isDrawLabels && dataText[i] != null) {
+      me.drawLabel(dataText[i], center, bottom, top, i);
+    }
+    me.putMarker('markers', {translationX:surfaceMatrix.x(center, top), translationY:surfaceMatrix.y(center, top)}, i, true);
+  }
+}, getIndexNearPoint:function(x, y) {
+  var sprite = this, attr = sprite.attr, dataX = attr.dataX, surface = sprite.getSurface(), surfaceRect = surface.getRect() || [0, 0, 0, 0], surfaceHeight = surfaceRect[3], hitX, hitY, i, bbox, index = -1;
+  if (attr.flipXY) {
+    hitX = surfaceHeight - y;
+    if (surface.getInherited().rtl) {
+      hitY = surfaceRect[2] - x;
+    } else {
+      hitY = x;
+    }
+  } else {
+    hitX = x;
+    hitY = surfaceHeight - y;
+  }
+  for (i = 0; i < dataX.length; i++) {
+    bbox = sprite.getMarkerBBox('items', i);
+    if (Ext.draw.Draw.isPointInBBox(hitX, hitY, bbox)) {
+      index = i;
+      break;
+    }
+  }
+  return index;
+}});
+Ext.define('Ext.chart.series.Bar', {extend:Ext.chart.series.StackedCartesian, alias:'series.bar', type:'bar', seriesType:'barSeries', config:{itemInstancing:{type:'rect', fx:{customDurations:{x:0, y:0, width:0, height:0, radius:0}}}}, getItemForPoint:function(x, y) {
+  if (this.getSprites()) {
+    var me = this, chart = me.getChart(), padding = chart.getInnerPadding(), isRtl = chart.getInherited().rtl;
+    arguments[0] = x + (isRtl ? padding.right : -padding.left);
+    arguments[1] = y + padding.bottom;
+    return me.callParent(arguments);
+  }
+}, updateXAxis:function(axis) {
+  axis.setLabelInSpan(true);
+  this.callParent(arguments);
+}, updateHidden:function(hidden) {
+  this.callParent(arguments);
+  this.updateStacked();
+}, updateStacked:function(stacked) {
+  var me = this, sprites = me.getSprites(), ln = sprites.length, visible = [], attributes = {}, i;
+  for (i = 0; i < ln; i++) {
+    if (!sprites[i].attr.hidden) {
+      visible.push(sprites[i]);
+    }
+  }
+  ln = visible.length;
+  if (me.getStacked()) {
+    attributes.groupCount = 1;
+    attributes.groupOffset = 0;
+    for (i = 0; i < ln; i++) {
+      visible[i].setAttributes(attributes);
+    }
+  } else {
+    attributes.groupCount = visible.length;
+    for (i = 0; i < ln; i++) {
+      attributes.groupOffset = i;
+      visible[i].setAttributes(attributes);
+    }
+  }
+  me.callParent(arguments);
+}});
+Ext.define('Ext.chart.series.sprite.Bar3D', {extend:Ext.chart.series.sprite.Bar, alias:'sprite.bar3dSeries', inheritableStatics:{def:{processors:{depthWidthRatio:'number', saturationFactor:'number', brightnessFactor:'number', colorSpread:'number'}, defaults:{depthWidthRatio:1 / 3, saturationFactor:1, brightnessFactor:1, colorSpread:1, transformFillStroke:true}, triggers:{groupCount:'panzoom'}, updaters:{panzoom:function(attr) {
+  var me = this, dx = attr.visibleMaxX - attr.visibleMinX, dy = attr.visibleMaxY - attr.visibleMinY, innerWidth = attr.flipXY ? attr.innerHeight : attr.innerWidth, innerHeight = !attr.flipXY ? attr.innerHeight : attr.innerWidth, surface = me.getSurface(), isRtl = surface ? surface.getInherited().rtl : false;
+  if (isRtl && !attr.flipXY) {
+    attr.translationX = innerWidth + attr.visibleMinX * innerWidth / dx;
+  } else {
+    attr.translationX = -attr.visibleMinX * innerWidth / dx;
+  }
+  attr.translationY = -attr.visibleMinY * (innerHeight - me.depth) / dy;
+  attr.scalingX = (isRtl && !attr.flipXY ? -1 : 1) * innerWidth / dx;
+  attr.scalingY = (innerHeight - me.depth) / dy;
+  attr.scalingCenterX = 0;
+  attr.scalingCenterY = 0;
+  me.applyTransformations(true);
+}}}}, config:{showStroke:false}, depth:0, drawBar:function(ctx, surface, clip, left, top, right, bottom, index) {
+  var me = this, attr = me.attr, itemCfg = {}, renderer = attr.renderer, changes, depth, series, params;
+  itemCfg.x = (left + right) * 0.5;
+  itemCfg.y = top;
+  itemCfg.width = (right - left) * 0.75;
+  itemCfg.height = bottom - top;
+  itemCfg.depth = depth = itemCfg.width * attr.depthWidthRatio;
+  itemCfg.orientation = attr.flipXY ? 'horizontal' : 'vertical';
+  itemCfg.saturationFactor = attr.saturationFactor;
+  itemCfg.brightnessFactor = attr.brightnessFactor;
+  itemCfg.colorSpread = attr.colorSpread;
+  if (depth !== me.depth) {
+    me.depth = depth;
+    series = me.getSeries();
+    series.fireEvent('depthchange', series, depth);
+  }
+  if (renderer) {
+    params = [me, itemCfg, {store:me.getStore()}, index];
+    changes = Ext.callback(renderer, null, params, 0, me.getSeries());
+    Ext.apply(itemCfg, changes);
+  }
+  me.putMarker('items', itemCfg, index, !renderer);
+}});
+Ext.define('Ext.chart.series.sprite.Box', {extend:Ext.draw.sprite.Sprite, alias:'sprite.box', type:'box', inheritableStatics:{def:{processors:{x:'number', y:'number', width:'number', height:'number', depth:'number', orientation:'enums(vertical,horizontal)', showStroke:'bool', saturationFactor:'number', brightnessFactor:'number', colorSpread:'number'}, triggers:{x:'bbox', y:'bbox', width:'bbox', height:'bbox', depth:'bbox', orientation:'bbox'}, defaults:{x:0, y:0, width:8, height:8, depth:8, orientation:'vertical', 
+showStroke:false, saturationFactor:1, brightnessFactor:1, colorSpread:1, lineJoin:'bevel'}}}, constructor:function(config) {
+  this.callParent([config]);
+  this.topGradient = new Ext.draw.gradient.Linear({});
+  this.rightGradient = new Ext.draw.gradient.Linear({});
+  this.frontGradient = new Ext.draw.gradient.Linear({});
+}, updatePlainBBox:function(plain) {
+  var attr = this.attr, x = attr.x, y = attr.y, width = attr.width, height = attr.height, depth = attr.depth;
+  plain.x = x - width * 0.5;
+  plain.width = width + depth;
+  if (height > 0) {
+    plain.y = y;
+    plain.height = height + depth;
+  } else {
+    plain.y = y + depth;
+    plain.height = height - depth;
+  }
+}, render:function(surface, ctx) {
+  var me = this, attr = me.attr, center = attr.x, top = attr.y, bottom = top + attr.height, isNegative = top < bottom, halfWidth = attr.width * 0.5, depth = attr.depth, isHorizontal = attr.orientation === 'horizontal', isTransparent = attr.globalAlpha < 1, fillStyle = attr.fillStyle, color = Ext.draw.Color.create(fillStyle.isGradient ? fillStyle.getStops()[0].color : fillStyle), saturationFactor = attr.saturationFactor, brightnessFactor = attr.brightnessFactor, colorSpread = attr.colorSpread, hsv = 
+  color.getHSV(), bbox = {}, roundX, roundY, temp;
+  if (!attr.showStroke) {
+    ctx.strokeStyle = Ext.draw.Color.RGBA_NONE;
+  }
+  if (isNegative) {
+    temp = top;
+    top = bottom;
+    bottom = temp;
+  }
+  me.topGradient.setDegrees(isHorizontal ? 0 : 80);
+  me.topGradient.setStops([{offset:0, color:Ext.draw.Color.fromHSV(hsv[0], Ext.Number.constrain(hsv[1] * saturationFactor, 0, 1), Ext.Number.constrain((0.5 + colorSpread * 0.1) * brightnessFactor, 0, 1))}, {offset:1, color:Ext.draw.Color.fromHSV(hsv[0], Ext.Number.constrain(hsv[1] * saturationFactor, 0, 1), Ext.Number.constrain((0.5 - colorSpread * 0.11) * brightnessFactor, 0, 1))}]);
+  me.rightGradient.setDegrees(isHorizontal ? 45 : 90);
+  me.rightGradient.setStops([{offset:0, color:Ext.draw.Color.fromHSV(hsv[0], Ext.Number.constrain(hsv[1] * saturationFactor, 0, 1), Ext.Number.constrain((0.5 - colorSpread * 0.14) * brightnessFactor, 0, 1))}, {offset:1, color:Ext.draw.Color.fromHSV(hsv[0], Ext.Number.constrain(hsv[1] * (1 + colorSpread * 0.4) * saturationFactor, 0, 1), Ext.Number.constrain((0.5 - colorSpread * 0.32) * brightnessFactor, 0, 1))}]);
+  if (isHorizontal) {
+    me.frontGradient.setDegrees(0);
+  } else {
+    me.frontGradient.setRadians(Math.atan2(top - bottom, halfWidth * 2));
+  }
+  me.frontGradient.setStops([{offset:0, color:Ext.draw.Color.fromHSV(hsv[0], Ext.Number.constrain(hsv[1] * (1 - colorSpread * 0.1) * saturationFactor, 0, 1), Ext.Number.constrain((0.5 + colorSpread * 0.1) * brightnessFactor, 0, 1))}, {offset:1, color:Ext.draw.Color.fromHSV(hsv[0], Ext.Number.constrain(hsv[1] * (1 + colorSpread * 0.1) * saturationFactor, 0, 1), Ext.Number.constrain((0.5 - colorSpread * 0.23) * brightnessFactor, 0, 1))}]);
+  if (isTransparent || isNegative) {
+    ctx.beginPath();
+    ctx.moveTo(center - halfWidth, bottom);
+    ctx.lineTo(center - halfWidth + depth, bottom + depth);
+    ctx.lineTo(center + halfWidth + depth, bottom + depth);
+    ctx.lineTo(center + halfWidth, bottom);
+    ctx.closePath();
+    bbox.x = center - halfWidth;
+    bbox.y = top;
+    bbox.width = halfWidth + depth;
+    bbox.height = depth;
+    ctx.fillStyle = (isHorizontal ? me.rightGradient : me.topGradient).generateGradient(ctx, bbox);
+    ctx.fillStroke(attr);
+  }
+  if (isTransparent) {
+    ctx.beginPath();
+    ctx.moveTo(center - halfWidth, top);
+    ctx.lineTo(center - halfWidth + depth, top + depth);
+    ctx.lineTo(center - halfWidth + depth, bottom + depth);
+    ctx.lineTo(center - halfWidth, bottom);
+    ctx.closePath();
+    bbox.x = center + halfWidth;
+    bbox.y = bottom;
+    bbox.width = depth;
+    bbox.height = top + depth - bottom;
+    ctx.fillStyle = (isHorizontal ? me.topGradient : me.rightGradient).generateGradient(ctx, bbox);
+    ctx.fillStroke(attr);
+  }
+  roundY = surface.roundPixel(top);
+  ctx.beginPath();
+  ctx.moveTo(center - halfWidth, roundY);
+  ctx.lineTo(center - halfWidth + depth, top + depth);
+  ctx.lineTo(center + halfWidth + depth, top + depth);
+  ctx.lineTo(center + halfWidth, roundY);
+  ctx.closePath();
+  bbox.x = center - halfWidth;
+  bbox.y = top;
+  bbox.width = halfWidth + depth;
+  bbox.height = depth;
+  ctx.fillStyle = (isHorizontal ? me.rightGradient : me.topGradient).generateGradient(ctx, bbox);
+  ctx.fillStroke(attr);
+  roundX = surface.roundPixel(center + halfWidth);
+  ctx.beginPath();
+  ctx.moveTo(roundX, surface.roundPixel(top));
+  ctx.lineTo(center + halfWidth + depth, top + depth);
+  ctx.lineTo(center + halfWidth + depth, bottom + depth);
+  ctx.lineTo(roundX, bottom);
+  ctx.closePath();
+  bbox.x = center + halfWidth;
+  bbox.y = bottom;
+  bbox.width = depth;
+  bbox.height = top + depth - bottom;
+  ctx.fillStyle = (isHorizontal ? me.topGradient : me.rightGradient).generateGradient(ctx, bbox);
+  ctx.fillStroke(attr);
+  roundX = surface.roundPixel(center + halfWidth);
+  roundY = surface.roundPixel(top);
+  ctx.beginPath();
+  ctx.moveTo(center - halfWidth, bottom);
+  ctx.lineTo(center - halfWidth, roundY);
+  ctx.lineTo(roundX, roundY);
+  ctx.lineTo(roundX, bottom);
+  ctx.closePath();
+  bbox.x = center - halfWidth;
+  bbox.y = bottom;
+  bbox.width = halfWidth * 2;
+  bbox.height = top - bottom;
+  ctx.fillStyle = me.frontGradient.generateGradient(ctx, bbox);
+  ctx.fillStroke(attr);
+}});
+Ext.define('Ext.chart.series.Bar3D', {extend:Ext.chart.series.Bar, alias:'series.bar3d', type:'bar3d', seriesType:'bar3dSeries', config:{itemInstancing:{type:'box', fx:{customDurations:{x:0, y:0, width:0, height:0, depth:0}}}, highlightCfg:{opacity:0.8}}, getSprites:function() {
+  var sprites = this.callParent(arguments), sprite, zIndex, i;
+  for (i = 0; i < sprites.length; i++) {
+    sprite = sprites[i];
+    zIndex = sprite.attr.zIndex;
+    if (zIndex < 0) {
+      sprite.setAttributes({zIndex:-zIndex});
+    }
+    if (sprite.setSeries) {
+      sprite.setSeries(this);
+    }
+  }
+  return sprites;
+}, getDepth:function() {
+  var sprite = this.getSprites()[0];
+  return sprite ? sprite.depth || 0 : 0;
+}, getItemForPoint:function(x, y) {
+  if (this.getSprites()) {
+    var me = this, i, sprite, itemInstancing = me.getItemInstancing(), sprites = me.getSprites(), store = me.getStore(), hidden = me.getHidden(), chart = me.getChart(), padding = chart.getInnerPadding(), isRtl = chart.getInherited().rtl, item, index, yField;
+    x = x + (isRtl ? padding.right : -padding.left);
+    y = y + padding.bottom;
+    for (i = sprites.length - 1; i >= 0; i--) {
+      if (!hidden[i]) {
+        sprite = sprites[i];
+        index = sprite.getIndexNearPoint(x, y);
+        if (index !== -1) {
+          yField = me.getYField();
+          item = {series:me, index:index, category:itemInstancing ? 'items' : 'markers', record:store.getData().items[index], field:typeof yField === 'string' ? yField : yField[i], sprite:sprite};
+          return item;
+        }
+      }
+    }
+    return null;
+  }
+}});
+Ext.define('Ext.draw.LimitedCache', {config:{limit:40, feeder:function() {
+  return 0;
+}, scope:null}, cache:null, constructor:function(config) {
+  this.cache = {};
+  this.cache.list = [];
+  this.cache.tail = 0;
+  this.initConfig(config);
+}, get:function(id) {
+  var cache = this.cache, limit = this.getLimit(), feeder = this.getFeeder(), scope = this.getScope() || this;
+  if (cache[id]) {
+    return cache[id].value;
+  }
+  if (cache.list[cache.tail]) {
+    delete cache[cache.list[cache.tail].cacheId];
+  }
+  cache[id] = cache.list[cache.tail] = {value:feeder.apply(scope, Array.prototype.slice.call(arguments, 1)), cacheId:id};
+  cache.tail++;
+  if (cache.tail === limit) {
+    cache.tail = 0;
+  }
+  return cache[id].value;
+}, clear:function() {
+  this.cache = {};
+  this.cache.list = [];
+  this.cache.tail = 0;
+}});
+Ext.define('Ext.draw.SegmentTree', {config:{strategy:'double'}, time:function(result, last, dataX, dataOpen, dataHigh, dataLow, dataClose) {
+  var start = 0, lastOffset, lastOffsetEnd, minimum = new Date(dataX[result.startIdx[0]]), maximum = new Date(dataX[result.endIdx[last - 1]]), extDate = Ext.Date, units = [[extDate.MILLI, 1, 'ms1', null], [extDate.MILLI, 2, 'ms2', 'ms1'], [extDate.MILLI, 5, 'ms5', 'ms1'], [extDate.MILLI, 10, 'ms10', 'ms5'], [extDate.MILLI, 50, 'ms50', 'ms10'], [extDate.MILLI, 100, 'ms100', 'ms50'], [extDate.MILLI, 500, 'ms500', 'ms100'], [extDate.SECOND, 1, 's1', 'ms500'], [extDate.SECOND, 10, 's10', 's1'], [extDate.SECOND, 
+  30, 's30', 's10'], [extDate.MINUTE, 1, 'mi1', 's10'], [extDate.MINUTE, 5, 'mi5', 'mi1'], [extDate.MINUTE, 10, 'mi10', 'mi5'], [extDate.MINUTE, 30, 'mi30', 'mi10'], [extDate.HOUR, 1, 'h1', 'mi30'], [extDate.HOUR, 6, 'h6', 'h1'], [extDate.HOUR, 12, 'h12', 'h6'], [extDate.DAY, 1, 'd1', 'h12'], [extDate.DAY, 7, 'd7', 'd1'], [extDate.MONTH, 1, 'mo1', 'd1'], [extDate.MONTH, 3, 'mo3', 'mo1'], [extDate.MONTH, 6, 'mo6', 'mo3'], [extDate.YEAR, 1, 'y1', 'mo3'], [extDate.YEAR, 5, 'y5', 'y1'], [extDate.YEAR, 
+  10, 'y10', 'y5'], [extDate.YEAR, 100, 'y100', 'y10']], unitIdx, currentUnit, plainStart = start, plainEnd = last, first = false, startIdxs = result.startIdx, endIdxs = result.endIdx, minIdxs = result.minIdx, maxIdxs = result.maxIdx, opens = result.open, closes = result.close, minXs = result.minX, minYs = result.minY, maxXs = result.maxX, maxYs = result.maxY, i, current;
+  for (unitIdx = 0; last > start + 1 && unitIdx < units.length; unitIdx++) {
+    minimum = new Date(dataX[startIdxs[0]]);
+    currentUnit = units[unitIdx];
+    minimum = extDate.align(minimum, currentUnit[0], currentUnit[1]);
+    if (extDate.diff(minimum, maximum, currentUnit[0]) > dataX.length * 2 * currentUnit[1]) {
+      continue;
+    }
+    if (currentUnit[3] && result.map['time_' + currentUnit[3]]) {
+      lastOffset = result.map['time_' + currentUnit[3]][0];
+      lastOffsetEnd = result.map['time_' + currentUnit[3]][1];
+    } else {
+      lastOffset = plainStart;
+      lastOffsetEnd = plainEnd;
+    }
+    start = last;
+    current = minimum;
+    first = true;
+    startIdxs[last] = startIdxs[lastOffset];
+    endIdxs[last] = endIdxs[lastOffset];
+    minIdxs[last] = minIdxs[lastOffset];
+    maxIdxs[last] = maxIdxs[lastOffset];
+    opens[last] = opens[lastOffset];
+    closes[last] = closes[lastOffset];
+    minXs[last] = minXs[lastOffset];
+    minYs[last] = minYs[lastOffset];
+    maxXs[last] = maxXs[lastOffset];
+    maxYs[last] = maxYs[lastOffset];
+    current = Ext.Date.add(current, currentUnit[0], currentUnit[1]);
+    for (i = lastOffset + 1; i < lastOffsetEnd; i++) {
+      if (dataX[endIdxs[i]] < +current) {
+        endIdxs[last] = endIdxs[i];
+        closes[last] = closes[i];
+        if (maxYs[i] > maxYs[last]) {
+          maxYs[last] = maxYs[i];
+          maxXs[last] = maxXs[i];
+          maxIdxs[last] = maxIdxs[i];
+        }
+        if (minYs[i] < minYs[last]) {
+          minYs[last] = minYs[i];
+          minXs[last] = minXs[i];
+          minIdxs[last] = minIdxs[i];
+        }
+      } else {
+        last++;
+        startIdxs[last] = startIdxs[i];
+        endIdxs[last] = endIdxs[i];
+        minIdxs[last] = minIdxs[i];
+        maxIdxs[last] = maxIdxs[i];
+        opens[last] = opens[i];
+        closes[last] = closes[i];
+        minXs[last] = minXs[i];
+        minYs[last] = minYs[i];
+        maxXs[last] = maxXs[i];
+        maxYs[last] = maxYs[i];
+        current = Ext.Date.add(current, currentUnit[0], currentUnit[1]);
+      }
+    }
+    if (last > start) {
+      result.map['time_' + currentUnit[2]] = [start, last];
+    }
+  }
+}, 'double':function(result, position, dataX, dataOpen, dataHigh, dataLow, dataClose) {
+  var offset = 0, lastOffset, step = 1, i, startIdx, endIdx, minIdx, maxIdx, open, close, minX, minY, maxX, maxY;
+  while (position > offset + 1) {
+    lastOffset = offset;
+    offset = position;
+    step += step;
+    for (i = lastOffset; i < offset; i += 2) {
+      if (i === offset - 1) {
+        startIdx = result.startIdx[i];
+        endIdx = result.endIdx[i];
+        minIdx = result.minIdx[i];
+        maxIdx = result.maxIdx[i];
+        open = result.open[i];
+        close = result.close[i];
+        minX = result.minX[i];
+        minY = result.minY[i];
+        maxX = result.maxX[i];
+        maxY = result.maxY[i];
+      } else {
+        startIdx = result.startIdx[i];
+        endIdx = result.endIdx[i + 1];
+        open = result.open[i];
+        close = result.close[i];
+        if (result.minY[i] <= result.minY[i + 1]) {
+          minIdx = result.minIdx[i];
+          minX = result.minX[i];
+          minY = result.minY[i];
+        } else {
+          minIdx = result.minIdx[i + 1];
+          minX = result.minX[i + 1];
+          minY = result.minY[i + 1];
+        }
+        if (result.maxY[i] >= result.maxY[i + 1]) {
+          maxIdx = result.maxIdx[i];
+          maxX = result.maxX[i];
+          maxY = result.maxY[i];
+        } else {
+          maxIdx = result.maxIdx[i + 1];
+          maxX = result.maxX[i + 1];
+          maxY = result.maxY[i + 1];
+        }
+      }
+      result.startIdx[position] = startIdx;
+      result.endIdx[position] = endIdx;
+      result.minIdx[position] = minIdx;
+      result.maxIdx[position] = maxIdx;
+      result.open[position] = open;
+      result.close[position] = close;
+      result.minX[position] = minX;
+      result.minY[position] = minY;
+      result.maxX[position] = maxX;
+      result.maxY[position] = maxY;
+      position++;
+    }
+    result.map['double_' + step] = [offset, position];
+  }
+}, none:Ext.emptyFn, aggregateData:function(dataX, dataOpen, dataHigh, dataLow, dataClose) {
+  var length = dataX.length, startIdx = [], endIdx = [], minIdx = [], maxIdx = [], open = [], minX = [], minY = [], maxX = [], maxY = [], close = [], result = {startIdx:startIdx, endIdx:endIdx, minIdx:minIdx, maxIdx:maxIdx, open:open, minX:minX, minY:minY, maxX:maxX, maxY:maxY, close:close}, i;
+  for (i = 0; i < length; i++) {
+    startIdx[i] = i;
+    endIdx[i] = i;
+    minIdx[i] = i;
+    maxIdx[i] = i;
+    open[i] = dataOpen[i];
+    minX[i] = dataX[i];
+    minY[i] = dataLow[i];
+    maxX[i] = dataX[i];
+    maxY[i] = dataHigh[i];
+    close[i] = dataClose[i];
+  }
+  result.map = {original:[0, length]};
+  if (length) {
+    this[this.getStrategy()](result, length, dataX, dataOpen, dataHigh, dataLow, dataClose);
+  }
+  return result;
+}, binarySearchMin:function(items, start, end, key) {
+  var dx = this.dataX;
+  if (key <= dx[items.startIdx[0]]) {
+    return start;
+  }
+  if (key >= dx[items.startIdx[end - 1]]) {
+    return end - 1;
+  }
+  while (start + 1 < end) {
+    var mid = start + end >> 1, val = dx[items.startIdx[mid]];
+    if (val === key) {
+      return mid;
+    } else {
+      if (val < key) {
+        start = mid;
+      } else {
+        end = mid;
+      }
+    }
+  }
+  return start;
+}, binarySearchMax:function(items, start, end, key) {
+  var dx = this.dataX;
+  if (key <= dx[items.endIdx[0]]) {
+    return start;
+  }
+  if (key >= dx[items.endIdx[end - 1]]) {
+    return end - 1;
+  }
+  while (start + 1 < end) {
+    var mid = start + end >> 1, val = dx[items.endIdx[mid]];
+    if (val === key) {
+      return mid;
+    } else {
+      if (val < key) {
+        start = mid;
+      } else {
+        end = mid;
+      }
+    }
+  }
+  return end;
+}, constructor:function(config) {
+  this.initConfig(config);
+}, setData:function(dataX, dataOpen, dataHigh, dataLow, dataClose) {
+  if (!dataHigh) {
+    dataClose = dataLow = dataHigh = dataOpen;
+  }
+  this.dataX = dataX;
+  this.dataOpen = dataOpen;
+  this.dataHigh = dataHigh;
+  this.dataLow = dataLow;
+  this.dataClose = dataClose;
+  if (dataX.length === dataHigh.length && dataX.length === dataLow.length) {
+    this.cache = this.aggregateData(dataX, dataOpen, dataHigh, dataLow, dataClose);
+  }
+}, getAggregation:function(min, max, estStep) {
+  if (!this.cache) {
+    return null;
+  }
+  var minStep = Infinity, range = this.dataX[this.dataX.length - 1] - this.dataX[0], cacheMap = this.cache.map, result = cacheMap.original, name, positions, ln, step, minIdx, maxIdx;
+  for (name in cacheMap) {
+    positions = cacheMap[name];
+    ln = positions[1] - positions[0] - 1;
+    step = range / ln;
+    if (estStep <= step && step < minStep) {
+      result = positions;
+      minStep = step;
+    }
+  }
+  minIdx = Math.max(this.binarySearchMin(this.cache, result[0], result[1], min), result[0]);
+  maxIdx = Math.min(this.binarySearchMax(this.cache, result[0], result[1], max) + 1, result[1]);
+  return {data:this.cache, start:minIdx, end:maxIdx};
+}});
+Ext.define('Ext.chart.series.sprite.Aggregative', {extend:Ext.chart.series.sprite.Cartesian, inheritableStatics:{def:{processors:{dataHigh:'data', dataLow:'data', dataClose:'data'}, aliases:{dataOpen:'dataY'}, defaults:{dataHigh:null, dataLow:null, dataClose:null}}}, config:{aggregator:{}}, applyAggregator:function(aggregator, oldAggr) {
+  return Ext.factory(aggregator, Ext.draw.SegmentTree, oldAggr);
+}, constructor:function() {
+  this.callParent(arguments);
+}, processDataY:function() {
+  var me = this, attr = me.attr, high = attr.dataHigh, low = attr.dataLow, close = attr.dataClose, open = attr.dataY;
+  me.callParent(arguments);
+  if (attr.dataX && open && open.length > 0) {
+    if (high) {
+      me.getAggregator().setData(attr.dataX, attr.dataY, high, low, close);
+    } else {
+      me.getAggregator().setData(attr.dataX, attr.dataY);
+    }
+  }
+}, getGapWidth:function() {
+  return 1;
+}, renderClipped:function(surface, ctx, clip, rect) {
+  var me = this, min = Math.min(clip[0], clip[2]), max = Math.max(clip[0], clip[2]), aggregates = me.getAggregator() && me.getAggregator().getAggregation(min, max, (max - min) / rect[2] * me.getGapWidth());
+  if (aggregates) {
+    me.dataStart = aggregates.data.startIdx[aggregates.start];
+    me.dataEnd = aggregates.data.endIdx[aggregates.end - 1];
+    me.renderAggregates(aggregates.data, aggregates.start, aggregates.end, surface, ctx, clip, rect);
+  }
+}});
+Ext.define('Ext.chart.series.sprite.CandleStick', {alias:'sprite.candlestickSeries', extend:Ext.chart.series.sprite.Aggregative, inheritableStatics:{def:{processors:{raiseStyle:function(n, o) {
+  return Ext.merge({}, o || {}, n);
+}, dropStyle:function(n, o) {
+  return Ext.merge({}, o || {}, n);
+}, barWidth:'number', padding:'number', ohlcType:'enums(candlestick,ohlc)'}, defaults:{raiseStyle:{strokeStyle:'green', fillStyle:'green'}, dropStyle:{strokeStyle:'red', fillStyle:'red'}, planar:false, barWidth:15, padding:3, lineJoin:'miter', miterLimit:5, ohlcType:'candlestick'}, triggers:{raiseStyle:'raiseStyle', dropStyle:'dropStyle'}, updaters:{raiseStyle:function() {
+  this.raiseTemplate && this.raiseTemplate.setAttributes(this.attr.raiseStyle);
+}, dropStyle:function() {
+  this.dropTemplate && this.dropTemplate.setAttributes(this.attr.dropStyle);
+}}}}, candlestick:function(ctx, open, high, low, close, mid, halfWidth) {
+  var minOC = Math.min(open, close), maxOC = Math.max(open, close);
+  ctx.moveTo(mid, low);
+  ctx.lineTo(mid, maxOC);
+  ctx.moveTo(mid + halfWidth, maxOC);
+  ctx.lineTo(mid + halfWidth, minOC);
+  ctx.lineTo(mid - halfWidth, minOC);
+  ctx.lineTo(mid - halfWidth, maxOC);
+  ctx.closePath();
+  ctx.moveTo(mid, high);
+  ctx.lineTo(mid, minOC);
+}, ohlc:function(ctx, open, high, low, close, mid, halfWidth) {
+  ctx.moveTo(mid, high);
+  ctx.lineTo(mid, low);
+  ctx.moveTo(mid, open);
+  ctx.lineTo(mid - halfWidth, open);
+  ctx.moveTo(mid, close);
+  ctx.lineTo(mid + halfWidth, close);
+}, constructor:function() {
+  this.callParent(arguments);
+  this.raiseTemplate = new Ext.draw.sprite.Rect({parent:this});
+  this.dropTemplate = new Ext.draw.sprite.Rect({parent:this});
+}, getGapWidth:function() {
+  var attr = this.attr, barWidth = attr.barWidth, padding = attr.padding;
+  return barWidth + padding;
+}, renderAggregates:function(aggregates, start, end, surface, ctx, clip) {
+  var me = this, attr = this.attr, dataX = attr.dataX, matrix = attr.matrix, xx = matrix.getXX(), yy = matrix.getYY(), dx = matrix.getDX(), dy = matrix.getDY(), barWidth = attr.barWidth / xx, template, ohlcType = attr.ohlcType, halfWidth = Math.round(barWidth * 0.5 * xx), opens = aggregates.open, closes = aggregates.close, maxYs = aggregates.maxY, minYs = aggregates.minY, startIdxs = aggregates.startIdx, open, high, low, close, mid, i, pixelAdjust = attr.lineWidth * surface.devicePixelRatio / 2;
+  pixelAdjust -= Math.floor(pixelAdjust);
+  ctx.save();
+  template = this.raiseTemplate;
+  template.useAttributes(ctx, clip);
+  ctx.beginPath();
+  for (i = start; i < end; i++) {
+    if (opens[i] <= closes[i]) {
+      open = Math.round(opens[i] * yy + dy) + pixelAdjust;
+      high = Math.round(maxYs[i] * yy + dy) + pixelAdjust;
+      low = Math.round(minYs[i] * yy + dy) + pixelAdjust;
+      close = Math.round(closes[i] * yy + dy) + pixelAdjust;
+      mid = Math.round(dataX[startIdxs[i]] * xx + dx) + pixelAdjust;
+      me[ohlcType](ctx, open, high, low, close, mid, halfWidth);
+    }
+  }
+  ctx.fillStroke(template.attr);
+  ctx.restore();
+  ctx.save();
+  template = this.dropTemplate;
+  template.useAttributes(ctx, clip);
+  ctx.beginPath();
+  for (i = start; i < end; i++) {
+    if (opens[i] > closes[i]) {
+      open = Math.round(opens[i] * yy + dy) + pixelAdjust;
+      high = Math.round(maxYs[i] * yy + dy) + pixelAdjust;
+      low = Math.round(minYs[i] * yy + dy) + pixelAdjust;
+      close = Math.round(closes[i] * yy + dy) + pixelAdjust;
+      mid = Math.round(dataX[startIdxs[i]] * xx + dx) + pixelAdjust;
+      me[ohlcType](ctx, open, high, low, close, mid, halfWidth);
+    }
+  }
+  ctx.fillStroke(template.attr);
+  ctx.restore();
+}});
+Ext.define('Ext.chart.series.CandleStick', {extend:Ext.chart.series.Cartesian, alias:'series.candlestick', type:'candlestick', seriesType:'candlestickSeries', config:{openField:null, highField:null, lowField:null, closeField:null}, fieldCategoryY:['Open', 'High', 'Low', 'Close'], themeColorCount:function() {
+  return 2;
+}});
 Ext.define('Ext.chart.series.Polar', {extend:Ext.chart.series.Series, config:{rotation:0, radius:null, center:[0, 0], offsetX:0, offsetY:0, showInLegend:true, xField:null, yField:null, angleField:null, radiusField:null, xAxis:null, yAxis:null}, directions:['X', 'Y'], fieldCategoryX:['X'], fieldCategoryY:['Y'], deprecatedConfigs:{field:'angleField', lengthField:'radiusField'}, constructor:function(config) {
   var me = this, configurator = me.getConfigurator(), configs = configurator.configs, p;
   if (config) {
@@ -88506,6 +91417,500 @@ Ext.define('Ext.chart.series.Polar', {extend:Ext.chart.series.Series, config:{ro
   var sprites = this.getSprites();
   if (sprites && sprites[0]) {
     sprites[0].setAttributes({baseRotation:rotation});
+  }
+}});
+Ext.define('Ext.chart.series.Gauge', {alias:'series.gauge', extend:Ext.chart.series.Polar, type:'gauge', seriesType:'pieslice', config:{needle:false, needleLength:90, needleWidth:4, donut:30, showInLegend:false, value:null, colors:null, sectors:null, minimum:0, maximum:100, rotation:0, totalAngle:Math.PI / 2, rect:[0, 0, 1, 1], center:[0.5, 0.75], radius:0.5, wholeDisk:false}, coordinateX:function() {
+  return this.coordinate('X', 0, 2);
+}, coordinateY:function() {
+  return this.coordinate('Y', 1, 2);
+}, updateNeedle:function(needle) {
+  var me = this, sprites = me.getSprites(), angle = me.valueToAngle(me.getValue());
+  if (sprites && sprites.length) {
+    sprites[0].setAttributes({startAngle:needle ? angle : 0, endAngle:angle, strokeOpacity:needle ? 1 : 0, lineWidth:needle ? me.getNeedleWidth() : 0});
+    me.doUpdateStyles();
+  }
+}, themeColorCount:function() {
+  var me = this, store = me.getStore(), count = store && store.getCount() || 0;
+  return count + (me.getNeedle() ? 0 : 1);
+}, updateColors:function(colors, oldColors) {
+  var me = this, sectors = me.getSectors(), sectorCount = sectors && sectors.length, sprites = me.getSprites(), newColors = Ext.Array.clone(colors), colorCount = colors && colors.length, i;
+  if (!colorCount || !colors[0]) {
+    return;
+  }
+  for (i = 0; i < sectorCount; i++) {
+    newColors[i + 1] = sectors[i].color || newColors[i + 1] || colors[i % colorCount];
+  }
+  if (sprites.length) {
+    sprites[0].setAttributes({strokeStyle:newColors[0]});
+  }
+  this.setSubStyle({fillStyle:newColors, strokeStyle:newColors});
+  this.doUpdateStyles();
+}, updateRect:function(rect) {
+  var wholeDisk = this.getWholeDisk(), halfTotalAngle = wholeDisk ? Math.PI : this.getTotalAngle() / 2, donut = this.getDonut() / 100, width, height, radius;
+  if (halfTotalAngle <= Math.PI / 2) {
+    width = 2 * Math.sin(halfTotalAngle);
+    height = 1 - donut * Math.cos(halfTotalAngle);
+  } else {
+    width = 2;
+    height = 1 - Math.cos(halfTotalAngle);
+  }
+  radius = Math.min(rect[2] / width, rect[3] / height);
+  this.setRadius(radius);
+  this.setCenter([rect[2] / 2, radius + (rect[3] - height * radius) / 2]);
+}, updateCenter:function(center) {
+  this.setStyle({centerX:center[0], centerY:center[1], rotationCenterX:center[0], rotationCenterY:center[1]});
+  this.doUpdateStyles();
+}, updateRotation:function(rotation) {
+  this.setStyle({rotationRads:rotation - (this.getTotalAngle() + Math.PI) / 2});
+  this.doUpdateStyles();
+}, doUpdateShape:function(radius, donut) {
+  var endRhoArray, sectors = this.getSectors(), sectorCount = sectors && sectors.length || 0, needleLength = this.getNeedleLength() / 100;
+  endRhoArray = [radius * needleLength, radius];
+  while (sectorCount--) {
+    endRhoArray.push(radius);
+  }
+  this.setSubStyle({endRho:endRhoArray, startRho:radius / 100 * donut});
+  this.doUpdateStyles();
+}, updateRadius:function(radius) {
+  var donut = this.getDonut();
+  this.doUpdateShape(radius, donut);
+}, updateDonut:function(donut) {
+  var radius = this.getRadius();
+  this.doUpdateShape(radius, donut);
+}, valueToAngle:function(value) {
+  value = this.applyValue(value);
+  return this.getTotalAngle() * (value - this.getMinimum()) / (this.getMaximum() - this.getMinimum());
+}, applyValue:function(value) {
+  return Math.min(this.getMaximum(), Math.max(value, this.getMinimum()));
+}, updateValue:function(value) {
+  var me = this, needle = me.getNeedle(), angle = me.valueToAngle(value), sprites = me.getSprites();
+  sprites[0].rendererData.value = value;
+  sprites[0].setAttributes({startAngle:needle ? angle : 0, endAngle:angle});
+  me.doUpdateStyles();
+}, processData:function() {
+  var me = this, store = me.getStore(), axis, min, max, fx, fxDuration, record = store && store.first(), xField, value;
+  if (record) {
+    xField = me.getXField();
+    if (xField) {
+      value = record.get(xField);
+    }
+  }
+  if (axis = me.getXAxis()) {
+    min = axis.getMinimum();
+    max = axis.getMaximum();
+    fx = axis.getSprites()[0].fx;
+    fxDuration = fx.getDuration();
+    fx.setDuration(0);
+    if (Ext.isNumber(min)) {
+      me.setMinimum(min);
+    } else {
+      axis.setMinimum(me.getMinimum());
+    }
+    if (Ext.isNumber(max)) {
+      me.setMaximum(max);
+    } else {
+      axis.setMaximum(me.getMaximum());
+    }
+    fx.setDuration(fxDuration);
+  }
+  if (!Ext.isNumber(value)) {
+    value = me.getMinimum();
+  }
+  me.setValue(value);
+}, getDefaultSpriteConfig:function() {
+  return {type:this.seriesType, renderer:this.getRenderer(), fx:{customDurations:{translationX:0, translationY:0, rotationCenterX:0, rotationCenterY:0, centerX:0, centerY:0, startRho:0, endRho:0, baseRotation:0}}};
+}, normalizeSectors:function(sectors) {
+  var me = this, sectorCount = sectors && sectors.length || 0, i, value, start, end;
+  if (sectorCount) {
+    for (i = 0; i < sectorCount; i++) {
+      value = sectors[i];
+      if (typeof value === 'number') {
+        sectors[i] = {start:i > 0 ? sectors[i - 1].end : me.getMinimum(), end:Math.min(value, me.getMaximum())};
+        if (i == sectorCount - 1 && sectors[i].end < me.getMaximum()) {
+          sectors[i + 1] = {start:sectors[i].end, end:me.getMaximum()};
+        }
+      } else {
+        if (typeof value.start === 'number') {
+          start = Math.max(value.start, me.getMinimum());
+        } else {
+          start = i > 0 ? sectors[i - 1].end : me.getMinimum();
+        }
+        if (typeof value.end === 'number') {
+          end = Math.min(value.end, me.getMaximum());
+        } else {
+          end = me.getMaximum();
+        }
+        sectors[i].start = start;
+        sectors[i].end = end;
+      }
+    }
+  } else {
+    sectors = [{start:me.getMinimum(), end:me.getMaximum()}];
+  }
+  return sectors;
+}, getSprites:function() {
+  var me = this, store = me.getStore(), value = me.getValue(), i, ln;
+  if (!store && !Ext.isNumber(value)) {
+    return [];
+  }
+  var chart = me.getChart(), animation = me.getAnimation() || chart && chart.getAnimation(), sprites = me.sprites, spriteIndex = 0, sprite, sectors, attr, rendererData, lineWidths = [];
+  if (sprites && sprites.length) {
+    sprites[0].setAnimation(animation);
+    return sprites;
+  }
+  rendererData = {store:store, field:me.getXField(), angleField:me.getXField(), value:value, series:me};
+  sprite = me.createSprite();
+  sprite.setAttributes({zIndex:10}, true);
+  sprite.rendererData = rendererData;
+  sprite.rendererIndex = spriteIndex++;
+  lineWidths.push(me.getNeedleWidth());
+  me.getLabel().getTemplate().setField(true);
+  sectors = me.normalizeSectors(me.getSectors());
+  for (i = 0, ln = sectors.length; i < ln; i++) {
+    attr = {startAngle:me.valueToAngle(sectors[i].start), endAngle:me.valueToAngle(sectors[i].end), label:sectors[i].label, fillStyle:sectors[i].color, strokeOpacity:0, doCallout:false, labelOverflowPadding:-1};
+    Ext.apply(attr, sectors[i].style);
+    sprite = me.createSprite();
+    sprite.rendererData = rendererData;
+    sprite.rendererIndex = spriteIndex++;
+    sprite.setAttributes(attr, true);
+    lineWidths.push(attr.lineWidth);
+  }
+  me.setSubStyle({lineWidth:lineWidths});
+  me.doUpdateStyles();
+  return sprites;
+}});
+Ext.define('Ext.chart.series.sprite.Line', {alias:'sprite.lineSeries', extend:Ext.chart.series.sprite.Aggregative, inheritableStatics:{def:{processors:{smooth:'bool', fillArea:'bool', step:'bool', preciseStroke:'bool', xAxis:'default', yCap:'default'}, defaults:{smooth:false, fillArea:false, step:false, preciseStroke:true, xAxis:null, yCap:Math.pow(2, 20), yJump:50}, triggers:{dataX:'dataX,bbox,smooth', dataY:'dataY,bbox,smooth', smooth:'smooth'}, updaters:{smooth:function(attr) {
+  var dataX = attr.dataX, dataY = attr.dataY;
+  if (attr.smooth && dataX && dataY && dataX.length > 2 && dataY.length > 2) {
+    this.smoothX = Ext.draw.Draw.spline(dataX);
+    this.smoothY = Ext.draw.Draw.spline(dataY);
+  } else {
+    delete this.smoothX;
+    delete this.smoothY;
+  }
+}}}}, list:null, updatePlainBBox:function(plain) {
+  var attr = this.attr, ymin = Math.min(0, attr.dataMinY), ymax = Math.max(0, attr.dataMaxY);
+  plain.x = attr.dataMinX;
+  plain.y = ymin;
+  plain.width = attr.dataMaxX - attr.dataMinX;
+  plain.height = ymax - ymin;
+}, drawStrip:function(ctx, strip) {
+  ctx.moveTo(strip[0], strip[1]);
+  for (var i = 2, ln = strip.length; i < ln; i += 2) {
+    ctx.lineTo(strip[i], strip[i + 1]);
+  }
+}, drawStraightStroke:function(surface, ctx, start, end, list, xAxis) {
+  var me = this, attr = me.attr, renderer = attr.renderer, step = attr.step, needMoveTo = true, lineConfig = {type:'line', smooth:false, step:step}, strip = [], lineConfig, changes, params, stripStartX, x, y, x0, y0, x1, y1, i;
+  for (i = 3; i < list.length; i += 3) {
+    x0 = list[i - 3];
+    y0 = list[i - 2];
+    x = list[i];
+    y = list[i + 1];
+    x1 = list[i + 3];
+    y1 = list[i + 4];
+    if (renderer) {
+      lineConfig.x = x;
+      lineConfig.y = y;
+      lineConfig.x0 = x0;
+      lineConfig.y0 = y0;
+      params = [me, lineConfig, me.rendererData, start + i / 3];
+      changes = Ext.callback(renderer, null, params, 0, me.getSeries());
+    }
+    if (Ext.isNumber(x + y + x0 + y0)) {
+      if (needMoveTo) {
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        strip.push(x0, y0);
+        stripStartX = x0;
+        needMoveTo = false;
+      }
+    } else {
+      continue;
+    }
+    if (step) {
+      ctx.lineTo(x, y0);
+      strip.push(x, y0);
+    }
+    ctx.lineTo(x, y);
+    strip.push(x, y);
+    if (changes || !Ext.isNumber(x1 + y1)) {
+      ctx.save();
+      Ext.apply(ctx, changes);
+      if (attr.fillArea) {
+        ctx.lineTo(x, xAxis);
+        ctx.lineTo(stripStartX, xAxis);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.beginPath();
+      me.drawStrip(ctx, strip);
+      strip = [];
+      ctx.stroke();
+      ctx.restore();
+      ctx.beginPath();
+      needMoveTo = true;
+    }
+  }
+}, calculateScale:function(count, end) {
+  var power = 0, n = count;
+  while (n < end && count > 0) {
+    power++;
+    n += count >> power;
+  }
+  return Math.pow(2, power > 0 ? power - 1 : power);
+}, drawSmoothStroke:function(surface, ctx, start, end, list, xAxis) {
+  var me = this, attr = me.attr, step = attr.step, matrix = attr.matrix, renderer = attr.renderer, xx = matrix.getXX(), yy = matrix.getYY(), dx = matrix.getDX(), dy = matrix.getDY(), smoothX = me.smoothX, smoothY = me.smoothY, scale = me.calculateScale(attr.dataX.length, end), cx1, cy1, cx2, cy2, x, y, x0, y0, i, j, changes, params, lineConfig = {type:'line', smooth:true, step:step};
+  ctx.beginPath();
+  ctx.moveTo(smoothX[start * 3] * xx + dx, smoothY[start * 3] * yy + dy);
+  for (i = 0, j = start * 3 + 1; i < list.length - 3; i += 3, j += 3 * scale) {
+    cx1 = smoothX[j] * xx + dx;
+    cy1 = smoothY[j] * yy + dy;
+    cx2 = smoothX[j + 1] * xx + dx;
+    cy2 = smoothY[j + 1] * yy + dy;
+    x = surface.roundPixel(list[i + 3]);
+    y = list[i + 4];
+    x0 = surface.roundPixel(list[i]);
+    y0 = list[i + 1];
+    if (renderer) {
+      lineConfig.x0 = x0;
+      lineConfig.y0 = y0;
+      lineConfig.cx1 = cx1;
+      lineConfig.cy1 = cy1;
+      lineConfig.cx2 = cx2;
+      lineConfig.cy2 = cy2;
+      lineConfig.x = x;
+      lineConfig.y = y;
+      params = [me, lineConfig, me.rendererData, start + i / 3 + 1];
+      changes = Ext.callback(renderer, null, params, 0, me.getSeries());
+      ctx.save();
+      Ext.apply(ctx, changes);
+    }
+    if (attr.fillArea) {
+      ctx.moveTo(x0, y0);
+      ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x, y);
+      ctx.lineTo(x, xAxis);
+      ctx.lineTo(x0, xAxis);
+      ctx.lineTo(x0, y0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+    }
+    ctx.moveTo(x0, y0);
+    ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x, y);
+    ctx.stroke();
+    ctx.moveTo(x0, y0);
+    ctx.closePath();
+    if (renderer) {
+      ctx.restore();
+    }
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  }
+  ctx.beginPath();
+}, drawLabel:function(text, dataX, dataY, labelId, rect) {
+  var me = this, attr = me.attr, label = me.getMarker('labels'), labelTpl = label.getTemplate(), labelCfg = me.labelCfg || (me.labelCfg = {}), surfaceMatrix = me.surfaceMatrix, labelX, labelY, labelOverflowPadding = attr.labelOverflowPadding, halfHeight, labelBBox, changes, params, hasPendingChanges;
+  labelCfg.x = surfaceMatrix.x(dataX, dataY);
+  labelCfg.y = surfaceMatrix.y(dataX, dataY);
+  if (attr.flipXY) {
+    labelCfg.rotationRads = Math.PI * 0.5;
+  } else {
+    labelCfg.rotationRads = 0;
+  }
+  labelCfg.text = text;
+  if (labelTpl.attr.renderer) {
+    params = [text, label, labelCfg, me.rendererData, labelId];
+    changes = Ext.callback(labelTpl.attr.renderer, null, params, 0, me.getSeries());
+    if (typeof changes === 'string') {
+      labelCfg.text = changes;
+    } else {
+      if (typeof changes === 'object') {
+        if ('text' in changes) {
+          labelCfg.text = changes.text;
+        }
+        hasPendingChanges = true;
+      }
+    }
+  }
+  labelBBox = me.getMarkerBBox('labels', labelId, true);
+  if (!labelBBox) {
+    me.putMarker('labels', labelCfg, labelId);
+    labelBBox = me.getMarkerBBox('labels', labelId, true);
+  }
+  halfHeight = labelBBox.height / 2;
+  labelX = dataX;
+  switch(labelTpl.attr.display) {
+    case 'under':
+      labelY = dataY - halfHeight - labelOverflowPadding;
+      break;
+    case 'rotate':
+      labelX += labelOverflowPadding;
+      labelY = dataY - labelOverflowPadding;
+      labelCfg.rotationRads = -Math.PI / 4;
+      break;
+    default:
+      labelY = dataY + halfHeight + labelOverflowPadding;
+  }
+  labelCfg.x = surfaceMatrix.x(labelX, labelY);
+  labelCfg.y = surfaceMatrix.y(labelX, labelY);
+  if (hasPendingChanges) {
+    Ext.apply(labelCfg, changes);
+  }
+  me.putMarker('labels', labelCfg, labelId);
+}, drawMarker:function(x, y, index) {
+  var me = this, attr = me.attr, renderer = attr.renderer, surfaceMatrix = me.surfaceMatrix, markerCfg = {}, changes, params;
+  if (renderer && me.getMarker('markers')) {
+    markerCfg.type = 'marker';
+    markerCfg.x = x;
+    markerCfg.y = y;
+    params = [me, markerCfg, me.rendererData, index];
+    changes = Ext.callback(renderer, null, params, 0, me.getSeries());
+    if (changes) {
+      Ext.apply(markerCfg, changes);
+    }
+  }
+  markerCfg.translationX = surfaceMatrix.x(x, y);
+  markerCfg.translationY = surfaceMatrix.y(x, y);
+  delete markerCfg.x;
+  delete markerCfg.y;
+  me.putMarker('markers', markerCfg, index, !renderer);
+}, drawStroke:function(surface, ctx, start, end, list, xAxis) {
+  var me = this, isSmooth = me.attr.smooth && me.smoothX && me.smoothY;
+  if (isSmooth) {
+    me.drawSmoothStroke(surface, ctx, start, end, list, xAxis);
+  } else {
+    me.drawStraightStroke(surface, ctx, start, end, list, xAxis);
+  }
+}, renderAggregates:function(aggregates, start, end, surface, ctx, clip, rect) {
+  var me = this, attr = me.attr, dataX = attr.dataX, dataY = attr.dataY, labels = attr.labels, xAxis = attr.xAxis, yCap = attr.yCap, isSmooth = attr.smooth && me.smoothX && me.smoothY, isDrawLabels = labels && me.getMarker('labels'), isDrawMarkers = me.getMarker('markers'), matrix = attr.matrix, pixel = surface.devicePixelRatio, xx = matrix.getXX(), yy = matrix.getYY(), dx = matrix.getDX(), dy = matrix.getDY(), list = me.list || (me.list = []), minXs = aggregates.minX, maxXs = aggregates.maxX, minYs = 
+  aggregates.minY, maxYs = aggregates.maxY, idx = aggregates.startIdx, isContinuousLine = true, xAxisOrigin, isVerticalX, x, y, i, index;
+  me.rendererData = {store:me.getStore()};
+  list.length = 0;
+  for (i = start; i < end; i++) {
+    var minX = minXs[i], maxX = maxXs[i], minY = minYs[i], maxY = maxYs[i];
+    if (minX < maxX) {
+      list.push(minX * xx + dx, minY * yy + dy, idx[i]);
+      list.push(maxX * xx + dx, maxY * yy + dy, idx[i]);
+    } else {
+      if (minX > maxX) {
+        list.push(maxX * xx + dx, maxY * yy + dy, idx[i]);
+        list.push(minX * xx + dx, minY * yy + dy, idx[i]);
+      } else {
+        list.push(maxX * xx + dx, maxY * yy + dy, idx[i]);
+      }
+    }
+  }
+  if (list.length) {
+    for (i = 0; i < list.length; i += 3) {
+      x = list[i];
+      y = list[i + 1];
+      if (Ext.isNumber(x + y)) {
+        if (y > yCap) {
+          y = yCap;
+        } else {
+          if (y < -yCap) {
+            y = -yCap;
+          }
+        }
+        list[i + 1] = y;
+      } else {
+        isContinuousLine = false;
+        continue;
+      }
+      index = list[i + 2];
+      if (isDrawMarkers) {
+        me.drawMarker(x, y, index);
+      }
+      if (isDrawLabels && labels[index]) {
+        me.drawLabel(labels[index], x, y, index, rect);
+      }
+    }
+    me.isContinuousLine = isContinuousLine;
+    if (isSmooth && !isContinuousLine) {
+      Ext.raise('Line smoothing in only supported for gapless data, ' + 'where all data points are finite numbers.');
+    }
+    if (xAxis) {
+      isVerticalX = xAxis.getAlignment() === 'vertical';
+      if (Ext.isNumber(xAxis.floatingAtCoord)) {
+        xAxisOrigin = (isVerticalX ? rect[2] : rect[3]) - xAxis.floatingAtCoord;
+      } else {
+        xAxisOrigin = isVerticalX ? rect[0] : rect[1];
+      }
+    } else {
+      xAxisOrigin = attr.flipXY ? rect[0] : rect[1];
+    }
+    if (attr.preciseStroke) {
+      if (attr.fillArea) {
+        ctx.fill();
+      }
+      if (attr.transformFillStroke) {
+        attr.inverseMatrix.toContext(ctx);
+      }
+      me.drawStroke(surface, ctx, start, end, list, xAxisOrigin);
+      if (attr.transformFillStroke) {
+        attr.matrix.toContext(ctx);
+      }
+      ctx.stroke();
+    } else {
+      me.drawStroke(surface, ctx, start, end, list, xAxisOrigin);
+      if (isContinuousLine && isSmooth && attr.fillArea && !attr.renderer) {
+        var lastPointX = dataX[dataX.length - 1] * xx + dx + pixel, lastPointY = dataY[dataY.length - 1] * yy + dy, firstPointX = dataX[0] * xx + dx - pixel, firstPointY = dataY[0] * yy + dy;
+        ctx.lineTo(lastPointX, lastPointY);
+        ctx.lineTo(lastPointX, xAxisOrigin - attr.lineWidth);
+        ctx.lineTo(firstPointX, xAxisOrigin - attr.lineWidth);
+        ctx.lineTo(firstPointX, firstPointY);
+      }
+      if (attr.transformFillStroke) {
+        attr.matrix.toContext(ctx);
+      }
+      if (attr.fillArea) {
+        ctx.fillStroke(attr, true);
+      } else {
+        ctx.stroke(true);
+      }
+    }
+  }
+}});
+Ext.define('Ext.chart.series.Line', {extend:Ext.chart.series.Cartesian, alias:'series.line', type:'line', seriesType:'lineSeries', config:{selectionTolerance:20, smooth:false, step:false, fill:undefined, aggregator:{strategy:'double'}}, defaultSmoothness:3, overflowBuffer:1, themeMarkerCount:function() {
+  return 1;
+}, getDefaultSpriteConfig:function() {
+  var me = this, parentConfig = me.callParent(arguments), style = Ext.apply({}, me.getStyle()), styleWithTheme, fillArea = false;
+  if (typeof me.config.fill != 'undefined') {
+    if (me.config.fill) {
+      fillArea = true;
+      if (typeof style.fillStyle == 'undefined') {
+        if (typeof style.strokeStyle == 'undefined') {
+          styleWithTheme = me.getStyleWithTheme();
+          style.fillStyle = styleWithTheme.fillStyle;
+          style.strokeStyle = styleWithTheme.strokeStyle;
+        } else {
+          style.fillStyle = style.strokeStyle;
+        }
+      }
+    }
+  } else {
+    if (style.fillStyle) {
+      fillArea = true;
+    }
+  }
+  if (!fillArea) {
+    delete style.fillStyle;
+  }
+  style = Ext.apply(parentConfig || {}, style);
+  return Ext.apply(style, {fillArea:fillArea, step:me.config.step, smooth:me.config.smooth, selectionTolerance:me.config.selectionTolerance});
+}, updateStep:function(step) {
+  var sprite = this.getSprites()[0];
+  if (sprite && sprite.attr.step !== step) {
+    sprite.setAttributes({step:step});
+  }
+}, updateFill:function(fill) {
+  var sprite = this.getSprites()[0];
+  if (sprite && sprite.attr.fillArea !== fill) {
+    sprite.setAttributes({fillArea:fill});
+  }
+}, updateSmooth:function(smooth) {
+  var sprite = this.getSprites()[0];
+  if (sprite && sprite.attr.smooth !== smooth) {
+    sprite.setAttributes({smooth:smooth});
   }
 }});
 Ext.define('Ext.chart.series.sprite.PieSlice', {extend:Ext.draw.sprite.Sector, mixins:{markerHolder:Ext.chart.MarkerHolder}, alias:'sprite.pieslice', inheritableStatics:{def:{processors:{doCallout:'bool', label:'string', rotateLabels:'bool', labelOverflowPadding:'number', renderer:'default'}, defaults:{doCallout:true, rotateLabels:true, label:'', labelOverflowPadding:10, renderer:null}}}, config:{rendererData:null, rendererIndex:0, series:null}, setGradientBBox:function(ctx, rect) {
@@ -89518,6 +92923,266 @@ Ext.define('Ext.chart.series.Pie3D', {extend:Ext.chart.series.Polar, type:'pie3d
   proto.partNames = definition.replace(/^enums\(|\)/g, '').split(',');
   proto.spritesPerSlice = proto.partNames.length;
 });
+Ext.define('Ext.chart.series.sprite.Polar', {extend:Ext.chart.series.sprite.Series, inheritableStatics:{def:{processors:{centerX:'number', centerY:'number', startAngle:'number', endAngle:'number', startRho:'number', endRho:'number', baseRotation:'number', labels:'default', labelOverflowPadding:'number'}, defaults:{centerX:0, centerY:0, startAngle:0, endAngle:Math.PI, startRho:0, endRho:150, baseRotation:0, labels:null, labelOverflowPadding:10}, triggers:{centerX:'bbox', centerY:'bbox', startAngle:'bbox', 
+endAngle:'bbox', startRho:'bbox', endRho:'bbox', baseRotation:'bbox'}}}, updatePlainBBox:function(plain) {
+  var attr = this.attr;
+  plain.x = attr.centerX - attr.endRho;
+  plain.y = attr.centerY + attr.endRho;
+  plain.width = attr.endRho * 2;
+  plain.height = attr.endRho * 2;
+}});
+Ext.define('Ext.chart.series.sprite.Radar', {alias:'sprite.radar', extend:Ext.chart.series.sprite.Polar, getDataPointXY:function(index) {
+  var me = this, attr = me.attr, centerX = attr.centerX, centerY = attr.centerY, matrix = attr.matrix, minX = attr.dataMinX, maxX = attr.dataMaxX, dataX = attr.dataX, dataY = attr.dataY, endRho = attr.endRho, startRho = attr.startRho, baseRotation = attr.baseRotation, x, y, r, th, ox, oy, maxY;
+  if (attr.rangeY) {
+    maxY = attr.rangeY[1];
+  } else {
+    maxY = attr.dataMaxY;
+  }
+  th = (dataX[index] - minX) / (maxX - minX + 1) * 2 * Math.PI + baseRotation;
+  r = dataY[index] / maxY * (endRho - startRho) + startRho;
+  ox = centerX + Math.cos(th) * r;
+  oy = centerY + Math.sin(th) * r;
+  x = matrix.x(ox, oy);
+  y = matrix.y(ox, oy);
+  return [x, y];
+}, render:function(surface, ctx) {
+  var me = this, attr = me.attr, dataX = attr.dataX, length = dataX.length, surfaceMatrix = me.surfaceMatrix, markerCfg = {}, i, x, y, xy;
+  ctx.beginPath();
+  for (i = 0; i < length; i++) {
+    xy = me.getDataPointXY(i);
+    x = xy[0];
+    y = xy[1];
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    }
+    ctx.lineTo(x, y);
+    markerCfg.translationX = surfaceMatrix.x(x, y);
+    markerCfg.translationY = surfaceMatrix.y(x, y);
+    me.putMarker('markers', markerCfg, i, true);
+  }
+  ctx.closePath();
+  ctx.fillStroke(attr);
+}});
+Ext.define('Ext.chart.series.Radar', {extend:Ext.chart.series.Polar, type:'radar', seriesType:'radar', alias:'series.radar', themeColorCount:function() {
+  return 1;
+}, isStoreDependantColorCount:false, themeMarkerCount:function() {
+  return 1;
+}, updateAngularAxis:function(axis) {
+  axis.processData(this);
+}, updateRadialAxis:function(axis) {
+  axis.processData(this);
+}, coordinateX:function() {
+  return this.coordinate('X', 0, 2);
+}, coordinateY:function() {
+  return this.coordinate('Y', 1, 2);
+}, updateCenter:function(center) {
+  this.setStyle({translationX:center[0] + this.getOffsetX(), translationY:center[1] + this.getOffsetY()});
+  this.doUpdateStyles();
+}, updateRadius:function(radius) {
+  this.setStyle({endRho:radius});
+  this.doUpdateStyles();
+}, updateRotation:function(rotation) {
+  this.setStyle({rotationRads:rotation});
+  this.doUpdateStyles();
+}, updateTotalAngle:function(totalAngle) {
+  this.processData();
+}, getItemForPoint:function(x, y) {
+  var me = this, sprite = me.sprites && me.sprites[0], attr = sprite.attr, dataX = attr.dataX, length = dataX.length, store = me.getStore(), marker = me.getMarker(), threshhold, item, xy, i, bbox, markers;
+  if (me.getHidden()) {
+    return null;
+  }
+  if (sprite && marker) {
+    markers = sprite.getMarker('markers');
+    for (i = 0; i < length; i++) {
+      bbox = markers.getBBoxFor(i);
+      threshhold = (bbox.width + bbox.height) * 0.25;
+      xy = sprite.getDataPointXY(i);
+      if (Math.abs(xy[0] - x) < threshhold && Math.abs(xy[1] - y) < threshhold) {
+        item = {series:me, sprite:sprite, index:i, category:'markers', record:store.getData().items[i], field:me.getYField()};
+        return item;
+      }
+    }
+  }
+  return me.callParent(arguments);
+}, getDefaultSpriteConfig:function() {
+  var config = this.callParent(), fx = {customDurations:{translationX:0, translationY:0, rotationRads:0, dataMinX:0, dataMaxX:0}};
+  if (config.fx) {
+    Ext.apply(config.fx, fx);
+  } else {
+    config.fx = fx;
+  }
+  return config;
+}, getSprites:function() {
+  var me = this, chart = me.getChart(), animation = me.getAnimation() || chart && chart.getAnimation(), sprite = me.sprites[0], marker;
+  if (!chart) {
+    return [];
+  }
+  if (!sprite) {
+    sprite = me.createSprite();
+  }
+  if (animation) {
+    marker = sprite.getMarker('markers');
+    if (marker) {
+      marker.getTemplate().setAnimation(animation);
+    }
+    sprite.setAnimation(animation);
+  }
+  return me.sprites;
+}, provideLegendInfo:function(target) {
+  var me = this, style = me.getSubStyleWithTheme(), fill = style.fillStyle;
+  if (Ext.isArray(fill)) {
+    fill = fill[0];
+  }
+  target.push({name:me.getTitle() || me.getYField() || me.getId(), mark:(Ext.isObject(fill) ? fill.stops && fill.stops[0].color : fill) || style.strokeStyle || 'black', disabled:me.getHidden(), series:me.getId(), index:0});
+}});
+Ext.define('Ext.chart.series.sprite.Scatter', {alias:'sprite.scatterSeries', extend:Ext.chart.series.sprite.Cartesian, renderClipped:function(surface, ctx, clip, clipRect) {
+  if (this.cleanRedraw) {
+    return;
+  }
+  var me = this, attr = me.attr, dataX = attr.dataX, dataY = attr.dataY, labels = attr.labels, series = me.getSeries(), isDrawLabels = labels && me.getMarker('labels'), matrix = me.attr.matrix, xx = matrix.getXX(), yy = matrix.getYY(), dx = matrix.getDX(), dy = matrix.getDY(), markerCfg = {}, changes, params, xScalingDirection = surface.getInherited().rtl && !attr.flipXY ? -1 : 1, left, right, top, bottom, x, y, i;
+  if (attr.flipXY) {
+    left = clipRect[1] - xx * xScalingDirection;
+    right = clipRect[1] + clipRect[3] + xx * xScalingDirection;
+    top = clipRect[0] - yy;
+    bottom = clipRect[0] + clipRect[2] + yy;
+  } else {
+    left = clipRect[0] - xx * xScalingDirection;
+    right = clipRect[0] + clipRect[2] + xx * xScalingDirection;
+    top = clipRect[1] - yy;
+    bottom = clipRect[1] + clipRect[3] + yy;
+  }
+  for (i = 0; i < dataX.length; i++) {
+    x = dataX[i];
+    y = dataY[i];
+    x = x * xx + dx;
+    y = y * yy + dy;
+    if (left <= x && x <= right && top <= y && y <= bottom) {
+      if (attr.renderer) {
+        markerCfg = {type:'items', translationX:x, translationY:y};
+        params = [me, markerCfg, {store:me.getStore()}, i];
+        changes = Ext.callback(attr.renderer, null, params, 0, series);
+        markerCfg = Ext.apply(markerCfg, changes);
+      } else {
+        markerCfg.translationX = x;
+        markerCfg.translationY = y;
+      }
+      me.putMarker('items', markerCfg, i, !attr.renderer);
+      if (isDrawLabels && labels[i]) {
+        me.drawLabel(labels[i], x, y, i, clipRect);
+      }
+    }
+  }
+}, drawLabel:function(text, dataX, dataY, labelId, rect) {
+  var me = this, attr = me.attr, label = me.getMarker('labels'), labelTpl = label.getTemplate(), labelCfg = me.labelCfg || (me.labelCfg = {}), surfaceMatrix = me.surfaceMatrix, labelX, labelY, labelOverflowPadding = attr.labelOverflowPadding, flipXY = attr.flipXY, halfHeight, labelBox, changes, params;
+  labelCfg.text = text;
+  labelBox = me.getMarkerBBox('labels', labelId, true);
+  if (!labelBox) {
+    me.putMarker('labels', labelCfg, labelId);
+    labelBox = me.getMarkerBBox('labels', labelId, true);
+  }
+  if (flipXY) {
+    labelCfg.rotationRads = Math.PI * 0.5;
+  } else {
+    labelCfg.rotationRads = 0;
+  }
+  halfHeight = labelBox.height / 2;
+  labelX = dataX;
+  switch(labelTpl.attr.display) {
+    case 'under':
+      labelY = dataY - halfHeight - labelOverflowPadding;
+      break;
+    case 'rotate':
+      labelX += labelOverflowPadding;
+      labelY = dataY - labelOverflowPadding;
+      labelCfg.rotationRads = -Math.PI / 4;
+      break;
+    default:
+      labelY = dataY + halfHeight + labelOverflowPadding;
+  }
+  labelCfg.x = surfaceMatrix.x(labelX, labelY);
+  labelCfg.y = surfaceMatrix.y(labelX, labelY);
+  if (labelTpl.attr.renderer) {
+    params = [text, label, labelCfg, {store:me.getStore()}, labelId];
+    changes = Ext.callback(labelTpl.attr.renderer, null, params, 0, me.getSeries());
+    if (typeof changes === 'string') {
+      labelCfg.text = changes;
+    } else {
+      Ext.apply(labelCfg, changes);
+    }
+  }
+  me.putMarker('labels', labelCfg, labelId);
+}});
+Ext.define('Ext.chart.series.Scatter', {extend:Ext.chart.series.Cartesian, alias:'series.scatter', type:'scatter', seriesType:'scatterSeries', config:{itemInstancing:{fx:{customDurations:{translationX:0, translationY:0}}}}, themeMarkerCount:function() {
+  return 1;
+}, applyMarker:function(marker, oldMarker) {
+  this.getItemInstancing();
+  this.setItemInstancing(marker);
+  return this.callParent(arguments);
+}, provideLegendInfo:function(target) {
+  var me = this, style = me.getMarkerStyleByIndex(0), fill = style.fillStyle;
+  target.push({name:me.getTitle() || me.getYField() || me.getId(), mark:(Ext.isObject(fill) ? fill.stops && fill.stops[0].color : fill) || style.strokeStyle || 'black', disabled:me.getHidden(), series:me.getId(), index:0});
+}});
+Ext.define('Ext.chart.theme.Blue', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.blue', 'chart.theme.Blue'], config:{baseColor:'#4d7fe6'}});
+Ext.define('Ext.chart.theme.BlueGradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.blue-gradients', 'chart.theme.Blue:gradients'], config:{baseColor:'#4d7fe6', gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.theme.Category1', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.category1', 'chart.theme.Category1'], config:{colors:['#f0a50a', '#c20024', '#2044ba', '#810065', '#7eae29']}});
+Ext.define('Ext.chart.theme.Category1Gradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.category1-gradients', 'chart.theme.Category1:gradients'], config:{colors:['#f0a50a', '#c20024', '#2044ba', '#810065', '#7eae29'], gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.theme.Category2', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.category2', 'chart.theme.Category2'], config:{colors:['#6d9824', '#87146e', '#2a9196', '#d39006', '#1e40ac']}});
+Ext.define('Ext.chart.theme.Category2Gradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.category2-gradients', 'chart.theme.Category2:gradients'], config:{colors:['#6d9824', '#87146e', '#2a9196', '#d39006', '#1e40ac'], gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.theme.Category3', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.category3', 'chart.theme.Category3'], config:{colors:['#fbbc29', '#ce2e4e', '#7e0062', '#158b90', '#57880e']}});
+Ext.define('Ext.chart.theme.Category3Gradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.category3-gradients', 'chart.theme.Category3:gradients'], config:{colors:['#fbbc29', '#ce2e4e', '#7e0062', '#158b90', '#57880e'], gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.theme.Category4', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.category4', 'chart.theme.Category4'], config:{colors:['#ef5773', '#fcbd2a', '#4f770d', '#1d3eaa', '#9b001f']}});
+Ext.define('Ext.chart.theme.Category4Gradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.category4-gradients', 'chart.theme.Category4:gradients'], config:{colors:['#ef5773', '#fcbd2a', '#4f770d', '#1d3eaa', '#9b001f'], gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.theme.Category5', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.category5', 'chart.theme.Category5'], config:{colors:['#7eae29', '#fdbe2a', '#910019', '#27b4bc', '#d74dbc']}});
+Ext.define('Ext.chart.theme.Category5Gradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.category5-gradients', 'chart.theme.Category5:gradients'], config:{colors:['#7eae29', '#fdbe2a', '#910019', '#27b4bc', '#d74dbc'], gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.theme.Category6', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.category6', 'chart.theme.Category6'], config:{colors:['#44dce1', '#0b2592', '#996e05', '#7fb325', '#b821a1']}});
+Ext.define('Ext.chart.theme.Category6Gradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.category6-gradients', 'chart.theme.Category6:gradients'], config:{colors:['#44dce1', '#0b2592', '#996e05', '#7fb325', '#b821a1'], gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.theme.DefaultGradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.default-gradients', 'chart.theme.Base:gradients'], config:{gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.theme.Green', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.green', 'chart.theme.Green'], config:{baseColor:'#b1da5a'}});
+Ext.define('Ext.chart.theme.GreenGradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.green-gradients', 'chart.theme.Green:gradients'], config:{baseColor:'#b1da5a', gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.theme.Midnight', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.midnight', 'chart.theme.Midnight'], config:{colors:['#A837FF', '#4AC0F2', '#FF4D35', '#FF8809', '#61C102', '#FF37EA'], chart:{defaults:{background:'rgb(52, 52, 53)'}}, axis:{defaults:{style:{strokeStyle:'rgb(224, 224, 227)'}, label:{fillStyle:'rgb(224, 224, 227)'}, title:{fillStyle:'rgb(224, 224, 227)'}, grid:{strokeStyle:'rgb(112, 112, 115)'}}}, series:{defaults:{label:{fillStyle:'rgb(224, 224, 227)'}}}, 
+sprites:{text:{fillStyle:'rgb(224, 224, 227)'}}}});
+Ext.define('Ext.chart.theme.Muted', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.muted', 'chart.theme.Muted'], config:{colors:['#8ca640', '#974144', '#4091ba', '#8e658e', '#3b8d8b', '#b86465', '#d2af69', '#6e8852', '#3dcc7e', '#a6bed1', '#cbaa4b', '#998baa']}});
+Ext.define('Ext.chart.theme.Purple', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.purple', 'chart.theme.Purple'], config:{baseColor:'#da5abd'}});
+Ext.define('Ext.chart.theme.PurpleGradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.purple-gradients', 'chart.theme.Purple:gradients'], config:{baseColor:'#da5abd', gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.theme.Red', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.red', 'chart.theme.Red'], config:{baseColor:'#e84b67'}});
+Ext.define('Ext.chart.theme.RedGradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.red-gradients', 'chart.theme.Red:gradients'], config:{baseColor:'#e84b67', gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.theme.Sky', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.sky', 'chart.theme.Sky'], config:{baseColor:'#4ce0e7'}});
+Ext.define('Ext.chart.theme.SkyGradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.sky-gradients', 'chart.theme.Sky:gradients'], config:{baseColor:'#4ce0e7', gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.theme.Yellow', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.yellow', 'chart.theme.Yellow'], config:{baseColor:'#fec935'}});
+Ext.define('Ext.chart.theme.YellowGradients', {extend:Ext.chart.theme.Base, singleton:true, alias:['chart.theme.yellow-gradients', 'chart.theme.Yellow:gradients'], config:{baseColor:'#fec935', gradients:{type:'linear', degrees:90}}});
+Ext.define('Ext.chart.TipSurface', {extend:Ext.draw.Container, spriteArray:false, renderFirst:true, constructor:function(config) {
+  this.callParent([config]);
+  if (config.sprites) {
+    this.spriteArray = [].concat(config.sprites);
+    delete config.sprites;
+  }
+}, onRender:function() {
+  var me = this, i = 0, l = 0, sp, sprites;
+  this.callParent(arguments);
+  sprites = me.spriteArray;
+  if (me.renderFirst && sprites) {
+    me.renderFirst = false;
+    for (l = sprites.length; i < l; i++) {
+      sp = me.surface.add(sprites[i]);
+      sp.setAttributes({hidden:false}, true);
+    }
+  }
+}});
+Ext.define('Ext.chart.interactions.ItemInfo', {extend:Ext.chart.interactions.Abstract, type:'iteminfo', alias:'interaction.iteminfo', config:{extjsGestures:{'start':{event:'click', handler:'onInfoGesture'}, 'move':{event:'mousemove', handler:'onInfoGesture'}, 'end':{event:'mouseleave', handler:'onInfoGesture'}}}, item:null, onInfoGesture:function(e, element) {
+  var me = this, item = me.getItemForEvent(e), tooltip = item && item.series.tooltip;
+  if (tooltip) {
+    tooltip.onMouseMove.call(tooltip, e);
+  }
+  if (item !== me.item) {
+    if (item) {
+      item.series.showTip(item);
+    } else {
+      me.item.series.hideTip(me.item);
+    }
+    me.item = item;
+  }
+  return false;
+}});
 Ext.define('Ext.ux.layout.ResponsiveColumn', {extend:Ext.layout.container.Auto, alias:'layout.responsivecolumn', states:{small:1000, large:0}, _responsiveCls:Ext.baseCSSPrefix + 'responsivecolumn', initLayout:function() {
   this.innerCtCls += ' ' + this._responsiveCls;
   this.callParent();
@@ -89630,6 +93295,7 @@ rejectInviteTemplate:'presence', acceptInviteTemplate:'presence', removeInviteTe
   }
   return nv;
 }});
+Ext.define('MobileJudge.model.stats.GroupedProjects', {extend:Ext.data.Model, fields:['project', 'grade']});
 Ext.define('MobileJudge.model.unregs.UnregJudge', {extend:Ext.data.Model, fields:[{name:'id', type:'int', convert:null}, {name:'state', type:'string'}, {name:'abbr', type:'string'}, {name:'fullName', type:'string', persist:false}, {name:'email', type:'string'}, {name:'profileImgUrl', type:'string'}, {name:'title', type:'string'}, {name:'affiliation', type:'string'}]});
 Ext.define('MobileJudge.proxy.API', {extend:Ext.data.proxy.Rest, alias:'proxy.api', noCache:false, startParam:'offset', limitParam:'count', pageParam:'', remoteSort:true, simpleSortMode:true, reader:{type:'api'}, writer:{type:'json'}, encodeFilters:function(filters) {
   return filters.map(function(f) {
@@ -89696,10 +93362,511 @@ Ext.define('MobileJudge.store.people.StudentGradesView', {extend:Ext.data.Store,
 Ext.define('MobileJudge.store.people.Students', {extend:Ext.data.Store, alias:'store.students', model:'MobileJudge.model.people.Student', proxy:{type:'api', url:'/api/students'}, remoteSort:true, remoteFilter:true, autoLoad:true, pageSize:25});
 Ext.define('MobileJudge.store.settings.Questions', {extend:Ext.data.Store, alias:'store.questions', model:'MobileJudge.model.settings.Question', proxy:{type:'api', url:'/api/questions'}, autoLoad:true, autoSync:true, pageSize:0});
 Ext.define('MobileJudge.store.settings.Terms', {extend:Ext.data.Store, alias:'store.terms', model:'MobileJudge.model.settings.Term', proxy:{type:'api', url:'/api/terms'}, autoLoad:true, pageSize:0, sorters:{direction:'ASC', property:'display'}});
+Ext.define('MobileJudge.store.stats.ProjectGrades', {extend:Ext.data.Store, alias:'store.projectGrades', storeId:'projectGrades', fields:['studentid', 'termid', 'state', 'abbr', 'fullname', 'email', 'project', 'grade', 'rawGrade', 'max', 'pending', 'accepted', 'rejected', 'filterStatus'], data:{items:[{'studentid':1571224, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Sean Monroe', 'email':'smonr003@fiu.edu', 'project':'Agricultural Robotics 3.0', 'grade':47.5, 'rawGrade':47.5, 'max':50, 
+'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':2106106, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Kathryn Bello', 'email':'kbell005@fiu.edu', 'project':'Streamlining Community Service Process at FIU 1.0', 'grade':45, 'rawGrade':45, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':2114515, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Victor Inostroza', 'email':'vinos001@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'grade':48.67, 'rawGrade':48.67, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':2276299, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Matthew Thomson', 'email':'mthom031@fiu.edu', 'project':'Traffic Simulator 2.0', 'grade':12, 'rawGrade':12, 'max':50, 'pending':0, 'accepted':1, 'rejected':1, 'filterStatus':'AR'}, {'studentid':2278535, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Christian Silva', 'email':'csilv069@fiu.edu', 'project':'Agricultural Robotics 3.0', 
+'grade':43.33, 'rawGrade':43.33, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':2598224, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Ekaterina Gumnova', 'email':'egumn001@fiu.edu', 'project':'Streamlining Community Service Process at FIU 1.0', 'grade':50, 'rawGrade':50, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':2643409, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Jose Casanova', 'email':'jcasa018@fiu.edu', 
+'project':'Professional Program Management System 1.0', 'grade':31.33, 'rawGrade':31.33, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':2652365, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Josue Mirtil', 'email':'jmirt001@fiu.edu', 'project':'Smart Billionaires 1.0', 'grade':32, 'rawGrade':32, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':2802295, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Alfredo Santoyo', 
+'email':'asant049@fiu.edu', 'project':'Academic Success Initiative - ASI PantherCentric 1.0', 'grade':44.67, 'rawGrade':44.67, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':2932902, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Daniel Rivero', 'email':'drive076@fiu.edu', 'project':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'grade':50, 'rawGrade':50, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':2995113, 
+'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Rolando Moreno', 'email':'rmore071@fiu.edu', 'project':'Academic Success Initiative - ASI PantherCentric 1.0', 'grade':50, 'rawGrade':50, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3119719, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Dafna Steinberg', 'email':'dstei035@fiu.edu', 'project':'VIP Website 6.0', 'grade':46.5, 'rawGrade':46.5, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 
+'filterStatus':'A'}, {'studentid':3245010, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Stephane Charite', 'email':'schar061@fiu.edu', 'project':'BOLO 8.0', 'grade':48, 'rawGrade':48, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3280808, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Priscila Cordova', 'email':'pcord004@fiu.edu', 'project':'Academic Success Initiative - ASI PantherCentric 1.0', 'grade':39, 'rawGrade':39, 'max':50, 'pending':0, 
+'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3282131, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Tiana Ruiz', 'email':'truiz006@fiu.edu', 'project':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'grade':44.2, 'rawGrade':44.2, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3319529, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Ernesto Scerpella', 'email':'escer001@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'grade':38.67, 'rawGrade':38.67, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3320295, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Jose Ayala', 'email':'jayal002@fiu.edu', 'project':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'grade':49.67, 'rawGrade':49.67, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3337819, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'David Schiumerini', 
+'email':'dschi002@fiu.edu', 'project':'SkillCourt 8.0', 'grade':45, 'rawGrade':45, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3353814, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Enrique Hidalgo', 'email':'ehida016@fiu.edu', 'project':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'grade':45, 'rawGrade':45, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3383076, 'termid':15, 'state':'Active', 
+'abbr':'AC', 'fullname':'Joseph Casal', 'email':'jcasa050@fiu.edu', 'project':'BreazeHome 2.0', 'grade':48, 'rawGrade':48, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3510364, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Steve Joseph', 'email':'sjose039@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':33, 'rawGrade':33, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3669639, 
+'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Richard Rodriguez', 'email':'rrodr420@fiu.edu', 'project':'SkillCourt 8.0', 'grade':42.75, 'rawGrade':42.75, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3734451, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Ruben Valdes', 'email':'rvald095@fiu.edu', 'project':'Exploring the Unconscious 1.0', 'grade':43.67, 'rawGrade':43.67, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, 
+{'studentid':3748243, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Juan Molina', 'email':'jmoli085@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':47.33, 'rawGrade':47.33, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3763339, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Carlos Manrique', 'email':'cmanr010@fiu.edu', 'project':'BreazeHome 2.0', 'grade':42, 'rawGrade':42, 'max':50, 'pending':0, 'accepted':1, 
+'rejected':0, 'filterStatus':'A'}, {'studentid':3765331, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Ranses Melo', 'email':'rmelo006@fiu.edu', 'project':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'grade':41, 'rawGrade':41, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3774990, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Oscar Yannelli', 'email':'oyann001@fiu.edu', 'project':'Virtual Roll Call 2.0', 'grade':38.25, 
+'rawGrade':38.25, 'max':50, 'pending':0, 'accepted':1, 'rejected':1, 'filterStatus':'AR'}, {'studentid':3805724, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Omar Kadery', 'email':'okade001@fiu.edu', 'project':'BOLO 8.0', 'grade':50, 'rawGrade':50, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3885008, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Bernardo Pla', 'email':'bpla003@fiu.edu', 'project':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'grade':47, 'rawGrade':47, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3915224, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Rolando Carralero', 'email':'rcarr085@fiu.edu', 'project':'Traffic Simulator 2.0', 'grade':47, 'rawGrade':47, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3960176, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Mark Barrett', 'email':'mbarr194@fiu.edu', 'project':'BreazeHome 2.0', 
+'grade':48.67, 'rawGrade':48.67, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3966932, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Alberto Castillo', 'email':'acast329@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':25.67, 'rawGrade':25.67, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3981050, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Nickolas Morales', 
+'email':'nmora041@fiu.edu', 'project':'FLACADA 1.0', 'grade':42, 'rawGrade':42, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':3986738, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Joana Fraga', 'email':'jfrag019@fiu.edu', 'project':'Professional Program Management System 1.0', 'grade':38, 'rawGrade':38, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':4000283, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Elliot Nicholson', 
+'email':'enich011@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':48.5, 'rawGrade':48.5, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':4008937, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Richard Quintero', 'email':'rquin072@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':45.5, 'rawGrade':45.5, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':4129026, 
+'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Rodrigo Aguilar', 'email':'ragui054@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':42.67, 'rawGrade':42.67, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':4140124, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Deon Davis', 'email':'ddavi133@fiu.edu', 'project':'Learning with Augmented Reality 3.0', 'grade':44.33, 'rawGrade':44.33, 'max':50, 'pending':0, 'accepted':1, 
+'rejected':0, 'filterStatus':'A'}, {'studentid':4141750, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Beth Thompson', 'email':'bthom088@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':46.5, 'rawGrade':46.5, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':4174094, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Ricardo Gomez', 'email':'rgome118@fiu.edu', 'project':'BOLO 8.0', 'grade':45, 'rawGrade':45, 'max':50, 
+'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':4235519, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Mabel Amaya', 'email':'mamay005@fiu.edu', 'project':'FLACADA 1.0', 'grade':0, 'rawGrade':0, 'max':0, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':4238526, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Edvin Li', 'email':'eli005@fiu.edu', 'project':'Learning with Augmented Reality 3.0', 'grade':41.75, 'rawGrade':41.75, 'max':50, 
+'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':4636102, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Fernando Mojena', 'email':'fmoje001@fiu.edu', 'project':'Life Management Platform 1.0', 'grade':41.5, 'rawGrade':41.5, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':4749811, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Daniel Antonio', 'email':'danto015@fiu.edu', 'project':'Exploring the Unconscious 1.0', 'grade':46, 
+'rawGrade':46, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':4805066, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Nicolas Howard', 'email':'nhowa006@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':42, 'rawGrade':42, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':4808229, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Daniel Khawand', 'email':'dkhaw001@fiu.edu', 
+'project':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'grade':46.33, 'rawGrade':46.33, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':4953998, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Jose Lezcano', 'email':'jlezc007@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':44.5, 'rawGrade':44.5, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5057208, 'termid':15, 
+'state':'Active', 'abbr':'AC', 'fullname':'Eric Fernandez', 'email':'efern187@fiu.edu', 'project':'Virtual Roll Call 2.0', 'grade':48.33, 'rawGrade':48.33, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5160375, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Mario Fidalgo', 'email':'mfida003@fiu.edu', 'project':'Mobile Judge 9.0', 'grade':45.5, 'rawGrade':45.5, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5310066, 
+'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Claudia Gourdet', 'email':'cgour002@fiu.edu', 'project':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'grade':40.5, 'rawGrade':40.5, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5455785, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Jose Ponce', 'email':'jponc021@fiu.edu', 'project':'VIP Website 6.0', 'grade':44.67, 'rawGrade':44.67, 'max':50, 'pending':0, 'accepted':1, 
+'rejected':0, 'filterStatus':'A'}, {'studentid':5456823, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Fernando Acosta', 'email':'facos012@fiu.edu', 'project':'BreazeHome 2.0', 'grade':42, 'rawGrade':42, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5488829, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Rabaul Islam', 'email':'risla001@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':45, 'rawGrade':45, 
+'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5576559, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Alejandro Corredor', 'email':'acorr092@fiu.edu', 'project':'BOLO 8.0', 'grade':43.75, 'rawGrade':43.75, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5647522, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Beatriz Hernandez', 'email':'bhern104@fiu.edu', 'project':'Life Management Platform 1.0', 'grade':43.75, 
+'rawGrade':43.75, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5699044, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Pachev Joseph', 'email':'pjose031@fiu.edu', 'project':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'grade':46, 'rawGrade':46, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5731790, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Kyle Ryan', 'email':'kryan014@fiu.edu', 
+'project':'Mobile Judge 9.0', 'grade':50, 'rawGrade':50, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5820326, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Jake Lopez', 'email':'jlope590@fiu.edu', 'project':'Academic Success Initiative - ASI PantherCentric 1.0', 'grade':44, 'rawGrade':44, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5820788, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Joshua Parisaca', 
+'email':'jpari021@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':41.33, 'rawGrade':41.33, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5924184, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Hamza Sohail', 'email':'hsoha003@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':50, 'rawGrade':50, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5927293, 
+'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Max Mills', 'email':'mmill209@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':40, 'rawGrade':40, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':5962595, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Jan Boscan', 'email':'jbosc012@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':42, 'rawGrade':42, 'max':50, 'pending':0, 
+'accepted':1, 'rejected':0, 'filterStatus':'A'}, {'studentid':6046126, 'termid':15, 'state':'Active', 'abbr':'AC', 'fullname':'Michael Santos', 'email':'msant296@fiu.edu', 'project':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'grade':48.5, 'rawGrade':48.5, 'max':50, 'pending':0, 'accepted':1, 'rejected':0, 'filterStatus':'A'}]}, proxy:{type:'memory', reader:{type:'json', rootProperty:'items'}}});
+Ext.define('MobileJudge.model.stats.GradeAverage', {extend:Ext.data.Model, fields:['studentid', 'termid', 'state', 'abbr', 'fullname', 'email', 'project', 'grade', 'rawGrade', 'max', 'pending', 'accepted', 'rejected', 'filterStatus']});
+Ext.define('MobileJudge.store.stats.GradeAverage', {extend:Ext.data.Store, alias:'store.gradeAverage', model:'MobileJudge.model.stats.GradeAverage', data:function() {
+  var data = [];
+  var store = Ext.createByAlias('store.projectGrades');
+  store.group('project');
+  var groups = store.getGroups();
+  groups.each(function(group) {
+    data.push({project:group.config.groupKey, avgGrade:group.average('grade'), rawGrade:group.average('rawGrade')});
+  });
+  return data;
+}()});
+Ext.define('MobileJudge.store.stats.QuestionGrades', {extend:Ext.data.Store, alias:'store.questionGrades', storeId:'questionGrades', fields:['judge', 'judgeId', 'comment', 'projectName', 'questionId', 'question', 'grade'], data:{items:[{'judge':'Ali Bagheri', 'student':'Sean Monroe', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 
+'student':'Sean Monroe', 'question':'How significant is the solution?', 'questionId':17, 'grade':7, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Sean Monroe', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Sean Monroe', 
+'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Sean Monroe', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Christian Silva', 
+'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Christian Silva', 'question':'How significant is the solution?', 'questionId':17, 'grade':7, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Christian Silva', 'question':'How impressive is the demo?', 
+'questionId':18, 'grade':0, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Christian Silva', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Christian Silva', 'question':'How expressive and self-sustained is the poster?', 
+'questionId':20, 'grade':7, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Dafna Steinberg', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'VIP Website 6.0', 'studentId':3119719, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Dafna Steinberg', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 
+'projectName':'VIP Website 6.0', 'studentId':3119719, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Dafna Steinberg', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'VIP Website 6.0', 'studentId':3119719, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Dafna Steinberg', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'VIP Website 6.0', 
+'studentId':3119719, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Dafna Steinberg', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'VIP Website 6.0', 'studentId':3119719, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Beatriz Hernandez', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Life Management Platform 1.0', 
+'studentId':5647522, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Beatriz Hernandez', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Beatriz Hernandez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 
+'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Beatriz Hernandez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Beatriz Hernandez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 
+'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Max Mills', 'question':'How significant is the problem?', 'questionId':16, 'grade':6, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Max Mills', 'question':'How significant is the solution?', 'questionId':17, 'grade':7, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5927293, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Max Mills', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Max Mills', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5927293, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ali Bagheri', 'student':'Max Mills', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':0, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':7163, 'comment':'', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Rolando Moreno', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 
+'studentId':2995113, 'judgeId':7239, 'comment':'for the school, very', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Rolando Moreno', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2995113, 'judgeId':7239, 'comment':'same... great real world application ', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Rolando Moreno', 'question':'How impressive is the demo?', 'questionId':18, 
+'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2995113, 'judgeId':7239, 'comment':'great', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Rolando Moreno', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2995113, 'judgeId':7239, 'comment':'excellent technical speaker... rare quality that the workplace could benefit from', 'accepted':'Accepted'}, 
+{'judge':'Alex Cuevas', 'student':'Rolando Moreno', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2995113, 'judgeId':7239, 'comment':'', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Ruben Valdes', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':7239, 'comment':'the problem set is theoretically and philosophically interesting; however, i could not close the loop on commercial viability of this project.. ', 
+'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Ruben Valdes', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':7239, 'comment':'although the mathematical algorithms in its design are interesting, i could not correlate that to how it related to the question / answer portion.. that is, the math behind it could arbitrarily give a different result which may or may not change the outcome of the user... ', 
+'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Ruben Valdes', 'question':'How impressive is the demo?', 'questionId':18, 'grade':6, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':7239, 'comment':'I did not see the demo .. .i believe this was b.c. it was not complete from form factor connecting to the core algorithm', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Ruben Valdes', 'question':'How well prepared is the student?', 'questionId':19, 
+'grade':8, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':7239, 'comment':'', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Ruben Valdes', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':7239, 'comment':'left me a bit confused', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Deon Davis', 'question':'How significant is the problem?', 
+'questionId':16, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':7239, 'comment':'Very relevant for architecture ', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Deon Davis', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':7239, 'comment':'', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Deon Davis', 'question':'How impressive is the demo?', 
+'questionId':18, 'grade':8, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':7239, 'comment':'Not all features are working', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Deon Davis', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':7239, 'comment':'', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Deon Davis', 'question':'How expressive and self-sustained is the poster?', 
+'questionId':20, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':7239, 'comment':'Good', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Fernando Mojena', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':7239, 'comment':"i loved this project - a quantification exercise around a person's quality of life ", 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 
+'student':'Fernando Mojena', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':7239, 'comment':'The solution has a good start, but could be expanded in so many directions - this i think has a real commercial application in the market place', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Fernando Mojena', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'Life Management Platform 1.0', 
+'studentId':4636102, 'judgeId':7239, 'comment':'pretty good', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Fernando Mojena', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':7239, 'comment':'good job in explaining', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Fernando Mojena', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 
+'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':7239, 'comment':'great ', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Claudia Gourdet', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':5310066, 'judgeId':7239, 'comment':'', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Claudia Gourdet', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':9, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':5310066, 'judgeId':7239, 'comment':'For a company not in the technology space, very much a need', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Claudia Gourdet', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':5310066, 'judgeId':7239, 'comment':'Website was good.  Lots of features.. Curious why some of the video content mentioned was not integrated', 
+'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Claudia Gourdet', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':5310066, 'judgeId':7239, 'comment':'', 'accepted':'Accepted'}, {'judge':'Alex Cuevas', 'student':'Claudia Gourdet', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 
+'studentId':5310066, 'judgeId':7239, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Ruben Valdes', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Ruben Valdes', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 
+'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Ruben Valdes', 'question':'How impressive is the demo?', 'questionId':18, 'grade':6, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Ruben Valdes', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':7286, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Ruben Valdes', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Omar Kadery', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':7286, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Omar Kadery', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Omar Kadery', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Omar Kadery', 
+'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Omar Kadery', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Elliot Nicholson', 'question':'How significant is the problem?', 
+'questionId':16, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4000283, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Elliot Nicholson', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4000283, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Elliot Nicholson', 
+'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4000283, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Elliot Nicholson', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4000283, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 
+'student':'Elliot Nicholson', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4000283, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Fernando Mojena', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Anu Chirinos', 'student':'Fernando Mojena', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Fernando Mojena', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 
+'student':'Fernando Mojena', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Fernando Mojena', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 
+'student':'Michael Santos', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Michael Santos', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':7286, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Michael Santos', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Michael Santos', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 
+'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Anu Chirinos', 'student':'Michael Santos', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':7286, 'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Christian Silva', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 
+'studentId':2278535, 'judgeId':7304, 'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Christian Silva', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':7304, 'comment':'If in flight issue can be resolved regarding data parsing, a very cool project. ', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Christian Silva', 'question':'How impressive is the demo?', 'questionId':18, 
+'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':7304, 'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Christian Silva', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':7304, 'comment':'Great answers, eye contact, rate, pitch and volume. Good use of gestures to point to different areas of the poster and explain product.', 'accepted':'Accepted'}, 
+{'judge':'Arden Napier', 'student':'Christian Silva', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':7304, 'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Nicolas Howard', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4805066, 'judgeId':7304, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Nicolas Howard', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4805066, 'judgeId':7304, 'comment':'The increase in data speed will be monumental for the business. ', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Nicolas Howard', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 
+'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4805066, 'judgeId':7304, 'comment':'Nicolas got more animated about his project the longer he talked about it.', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Nicolas Howard', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4805066, 'judgeId':7304, 'comment':'Great eye contact, rate, pitch and volume. Some fidgeting to be aware of for future presentations. ', 
+'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Nicolas Howard', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4805066, 'judgeId':7304, 'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Alejandro Corredor', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':7304, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Alejandro Corredor', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':7304, 'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Alejandro Corredor', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':7304, 'comment':'Alejandro and his teammates showed a definite passion for finding a workable solution and jointly explaining aspects of the project. ', 
+'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Alejandro Corredor', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':7304, 'comment':'Great eye contact, rate, pitch and volume while speaking. Good use of gestures. ', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Alejandro Corredor', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BOLO 8.0', 
+'studentId':5576559, 'judgeId':7304, 'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Beatriz Hernandez', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':7304, 'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Beatriz Hernandez', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'Life Management Platform 1.0', 
+'studentId':5647522, 'judgeId':7304, 'comment':'A little more thought and direction may be necessary for the initial first step of the project Beatriz indicated she felt was the most important but difficult for the end user. ', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Beatriz Hernandez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':7304, 'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 
+'student':'Beatriz Hernandez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':7304, 'comment':'Work a bit more on eye contact and be aware of talking to the poster more than your audience. Good rate and pitch, but work on adding a little more volume while speaking, especially in a room with significant background noise. ', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Beatriz Hernandez', 
+'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':7304, 'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Kyle Ryan', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':7304, 'comment':'', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Kyle Ryan', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':7304, 'comment':'As a judge, I had a good experience using the app. ', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Kyle Ryan', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':7304, 'comment':'Very! There was a live problem solving scenario that occurred during the explanation. ', 'accepted':'Accepted'}, 
+{'judge':'Arden Napier', 'student':'Kyle Ryan', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':7304, 'comment':'Great eye contact, rate, pitch and volume while speaking. Engaging presentation and demo.  ', 'accepted':'Accepted'}, {'judge':'Arden Napier', 'student':'Kyle Ryan', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 
+'judgeId':7304, 'comment':'', 'accepted':'Accepted'}, {'judge':'AqibAli Shah', 'student':'Joseph Casal', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3383076, 'judgeId':7327, 'comment':'', 'accepted':'Accepted'}, {'judge':'AqibAli Shah', 'student':'Joseph Casal', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3383076, 'judgeId':7327, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'AqibAli Shah', 'student':'Joseph Casal', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3383076, 'judgeId':7327, 'comment':'', 'accepted':'Accepted'}, {'judge':'AqibAli Shah', 'student':'Joseph Casal', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3383076, 'judgeId':7327, 'comment':'', 'accepted':'Accepted'}, {'judge':'AqibAli Shah', 'student':'Joseph Casal', 
+'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3383076, 'judgeId':7327, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Ranses Melo', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 
+'student':'Ranses Melo', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Ranses Melo', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':7388, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Ranses Melo', 'question':'How well prepared is the student?', 'questionId':19, 'grade':6, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Ranses Melo', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':7, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 
+'studentId':3765331, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Alberto Castillo', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3966932, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Alberto Castillo', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3966932, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Alberto Castillo', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3966932, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Alberto Castillo', 'question':'How well prepared is the student?', 'questionId':19, 'grade':7, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3966932, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Alberto Castillo', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':0, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3966932, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Ricardo Gomez', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 
+'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Ricardo Gomez', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Ricardo Gomez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'BOLO 8.0', 'studentId':4174094, 
+'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Ricardo Gomez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Ricardo Gomez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7388, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Max Mills', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Max Mills', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5927293, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Max Mills', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Max Mills', 'question':'How well prepared is the student?', 'questionId':19, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5927293, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leonardo Bobadilla', 'student':'Max Mills', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':7, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':7388, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Bernardo Pla', 'question':'How significant is the problem?', 'questionId':16, 'grade':7, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':3885008, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Bernardo Pla', 'question':'How significant is the solution?', 'questionId':17, 'grade':6, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':3885008, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Bernardo Pla', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':3885008, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Bernardo Pla', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':3885008, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Bernardo Pla', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 
+'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':3885008, 'judgeId':7464, 'comment':"Although the problem and solutions was hard for me to understand I can see that it's important to the future of VR and gaming. I also really like that they would share what the build for others to build from", 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Mark Barrett', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'BreazeHome 2.0', 
+'studentId':3960176, 'judgeId':7464, 'comment':"It wasn't clear how this was better or different than Zillow other than a more modern UI. Mark however did a great job answering questions and explaining the product.", 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Mark Barrett', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':7464, 'comment':'Design is important but I would like to see bigger benefits to the function', 
+'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Mark Barrett', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':7464, 'comment':'Good demo', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Mark Barrett', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 
+'student':'Mark Barrett', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Deon Davis', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 
+'student':'Deon Davis', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Deon Davis', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 
+'student':'Deon Davis', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Deon Davis', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 
+'student':'Ricardo Gomez', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7464, 'comment':'Great problem to solve ,to help keep the community safe while making law enforcement more efficient ', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Ricardo Gomez', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7464, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Ricardo Gomez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Ricardo Gomez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':8, 'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7464, 'comment':"He couldn't find resume", 'accepted':'Accepted'}, 
+{'judge':'Christy Freire', 'student':'Ricardo Gomez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':6, 'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Alejandro Corredor', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':7464, 'comment':'Great problem to solve while keeping the community safe!', 
+'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Alejandro Corredor', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Alejandro Corredor', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 
+'student':'Alejandro Corredor', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Christy Freire', 'student':'Alejandro Corredor', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':0, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':7464, 'comment':'', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Josue Mirtil', 
+'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'Smart Billionaires 1.0', 'studentId':2652365, 'judgeId':7525, 'comment':'Always need help with stock markets.  Project is to early stage to evaluate value', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Josue Mirtil', 'question':'How significant is the solution?', 'questionId':17, 'grade':0, 'projectName':'Smart Billionaires 1.0', 'studentId':2652365, 'judgeId':7525, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Dale Gregory', 'student':'Josue Mirtil', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'Smart Billionaires 1.0', 'studentId':2652365, 'judgeId':7525, 'comment':'In development.  Needs proof of concept', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Josue Mirtil', 'question':'How well prepared is the student?', 'questionId':19, 'grade':0, 'projectName':'Smart Billionaires 1.0', 'studentId':2652365, 'judgeId':7525, 'comment':"Student Need's to develop presentation skills.  Had to draw out info to learn about app", 
+'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Josue Mirtil', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':7, 'projectName':'Smart Billionaires 1.0', 'studentId':2652365, 'judgeId':7525, 'comment':'Hard to follow', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Priscila Cordova', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':3280808, 
+'judgeId':7525, 'comment':'Imprtant mgt tool for quality and activity analysis', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Priscila Cordova', 'question':'How significant is the solution?', 'questionId':17, 'grade':0, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':3280808, 'judgeId':7525, 'comment':'', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Priscila Cordova', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 
+'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':3280808, 'judgeId':7525, 'comment':'', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Priscila Cordova', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':3280808, 'judgeId':7525, 'comment':'', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Priscila Cordova', 'question':'How expressive and self-sustained is the poster?', 
+'questionId':20, 'grade':9, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':3280808, 'judgeId':7525, 'comment':'Has documentation.  Plans to enhance', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Steve Joseph', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':7525, 'comment':'Old pcs and dsl network', 'accepted':'Accepted'}, 
+{'judge':'Dale Gregory', 'student':'Steve Joseph', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':7525, 'comment':'Excellent given limited financial resourses', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Steve Joseph', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3510364, 'judgeId':7525, 'comment':'Good', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Steve Joseph', 'question':'How well prepared is the student?', 'questionId':19, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':7525, 'comment':'God explanation', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Steve Joseph', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 
+'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':7525, 'comment':'Good', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Hamza Sohail', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5924184, 'judgeId':7525, 'comment':'Real life application with high value', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Hamza Sohail', 
+'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5924184, 'judgeId':7525, 'comment':'Best that can be accomplished with limited funds', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Hamza Sohail', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5924184, 'judgeId':7525, 
+'comment':'Outstanding', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Hamza Sohail', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5924184, 'judgeId':7525, 'comment':'Professional', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Hamza Sohail', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5924184, 'judgeId':7525, 'comment':'', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Max Mills', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':7525, 'comment':'Significant for npo', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Max Mills', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5927293, 'judgeId':7525, 'comment':'Professional using cat with limited financial resources', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Max Mills', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':7525, 'comment':'Outstanding', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Max Mills', 'question':'How well prepared is the student?', 
+'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':7525, 'comment':'Outstanding', 'accepted':'Accepted'}, {'judge':'Dale Gregory', 'student':'Max Mills', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':0, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':7525, 'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Daniel Rivero', 
+'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':2932902, 'judgeId':7541, 'comment':'very significant, and vr is a great field', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Daniel Rivero', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':2932902, 'judgeId':7541, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Daniel Rivero', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':2932902, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Daniel Rivero', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':2932902, 'judgeId':7541, 'comment':'very well prepared, and well-spoken', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Daniel Rivero', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':2932902, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'David Schiumerini', 'question':'How significant is the problem?', 
+'questionId':16, 'grade':10, 'projectName':'SkillCourt 8.0', 'studentId':3337819, 'judgeId':7541, 'comment':'very', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'David Schiumerini', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'SkillCourt 8.0', 'studentId':3337819, 'judgeId':7541, 'comment':'great solution, still in the early stages, but much potential', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'David Schiumerini', 'question':'How impressive is the demo?', 
+'questionId':18, 'grade':10, 'projectName':'SkillCourt 8.0', 'studentId':3337819, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'David Schiumerini', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'SkillCourt 8.0', 'studentId':3337819, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'David Schiumerini', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 
+'grade':10, 'projectName':'SkillCourt 8.0', 'studentId':3337819, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Mark Barrett', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Mark Barrett', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'BreazeHome 2.0', 
+'studentId':3960176, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Mark Barrett', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Mark Barrett', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':7541, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Mark Barrett', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Daniel Antonio', 'question':'How significant is the problem?', 'questionId':16, 'grade':7, 'projectName':'Exploring the Unconscious 1.0', 'studentId':4749811, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'David Baez', 'student':'Daniel Antonio', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'Exploring the Unconscious 1.0', 'studentId':4749811, 'judgeId':7541, 'comment':'its definitely interesting', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Daniel Antonio', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'Exploring the Unconscious 1.0', 'studentId':4749811, 'judgeId':7541, 'comment':'Worked about 50% of the time', 
+'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Daniel Antonio', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':4749811, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Daniel Antonio', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':4749811, 'judgeId':7541, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Beatriz Hernandez', 'question':'How significant is the problem?', 'questionId':16, 'grade':5, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':7541, 'comment':'not very', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Beatriz Hernandez', 'question':'How significant is the solution?', 'questionId':17, 'grade':7, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':7541, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Beatriz Hernandez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Beatriz Hernandez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':7, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':7541, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'David Baez', 'student':'Beatriz Hernandez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':7541, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Stephane Charite', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'BOLO 8.0', 'studentId':3245010, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Darie Dorlus', 'student':'Stephane Charite', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'BOLO 8.0', 'studentId':3245010, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Stephane Charite', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3245010, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Stephane Charite', 
+'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3245010, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Stephane Charite', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'BOLO 8.0', 'studentId':3245010, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Daniel Antonio', 'question':'How significant is the problem?', 
+'questionId':16, 'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':4749811, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Daniel Antonio', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':4749811, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Daniel Antonio', 'question':'How impressive is the demo?', 'questionId':18, 
+'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':4749811, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Daniel Antonio', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':4749811, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Daniel Antonio', 'question':'How expressive and self-sustained is the poster?', 
+'questionId':20, 'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':4749811, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Fernando Acosta', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':5456823, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Fernando Acosta', 'question':'How significant is the solution?', 'questionId':17, 
+'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':5456823, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Fernando Acosta', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':5456823, 'judgeId':7550, 'comment':'very good ', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Fernando Acosta', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'BreazeHome 2.0', 
+'studentId':5456823, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Fernando Acosta', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'BreazeHome 2.0', 'studentId':5456823, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Rabaul Islam', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5488829, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Rabaul Islam', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5488829, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Rabaul Islam', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5488829, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Rabaul Islam', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5488829, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Rabaul Islam', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5488829, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Pachev Joseph', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':5699044, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Pachev Joseph', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':5699044, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Pachev Joseph', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':5699044, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Pachev Joseph', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':5699044, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Darie Dorlus', 'student':'Pachev Joseph', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':5699044, 'judgeId':7550, 'comment':'', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Josue Mirtil', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'Smart Billionaires 1.0', 
+'studentId':2652365, 'judgeId':7684, 'comment':'this is a really interesting project ', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Josue Mirtil', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'Smart Billionaires 1.0', 'studentId':2652365, 'judgeId':7684, 'comment':'good functionality ', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Josue Mirtil', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'Smart Billionaires 1.0', 
+'studentId':2652365, 'judgeId':7684, 'comment':'decent, but inclusion of Zone recovery area later would be a valuable addition ', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Josue Mirtil', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Smart Billionaires 1.0', 'studentId':2652365, 'judgeId':7684, 'comment':'excellent ', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Josue Mirtil', 'question':'How expressive and self-sustained is the poster?', 
+'questionId':20, 'grade':7, 'projectName':'Smart Billionaires 1.0', 'studentId':2652365, 'judgeId':7684, 'comment':'graphics need work. some diagrams are really boring to look at - this is a pedagogical issue, not a short coming of the student', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Alfredo Santoyo', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2802295, 'judgeId':7684, 
+'comment':'interesting problem for extending the functionality of an existing tutoring program.', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Alfredo Santoyo', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2802295, 'judgeId':7684, 'comment':'there are additional query options that can be developed.', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Alfredo Santoyo', 
+'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2802295, 'judgeId':7684, 'comment':'solid. screen solution is more convincing than printed graphics.', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Alfredo Santoyo', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2802295, 
+'judgeId':7684, 'comment':'excellent ', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Alfredo Santoyo', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':5, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2802295, 'judgeId':7684, 'comment':'needs more color and more lively diagrams ', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Richard Rodriguez', 'question':'How significant is the problem?', 'questionId':16, 
+'grade':9, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':7684, 'comment':'', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Richard Rodriguez', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':7684, 'comment':'', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Richard Rodriguez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'SkillCourt 8.0', 
+'studentId':3669639, 'judgeId':7684, 'comment':'', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Richard Rodriguez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':7684, 'comment':'', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Richard Rodriguez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':6, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 
+'judgeId':7684, 'comment':'the graphics are far less interesting than the device video demo.', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Joana Fraga', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'Professional Program Management System 1.0', 'studentId':3986738, 'judgeId':7684, 'comment':'great idea to extend interactivity of an existing passive website', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Joana Fraga', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':8, 'projectName':'Professional Program Management System 1.0', 'studentId':3986738, 'judgeId':7684, 'comment':'can. e extended further', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Joana Fraga', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'Professional Program Management System 1.0', 'studentId':3986738, 'judgeId':7684, 'comment':'it is a fully functional and graphically interesting solution ', 'accepted':'Accepted'}, 
+{'judge':'Eric Peterson', 'student':'Joana Fraga', 'question':'How well prepared is the student?', 'questionId':19, 'grade':7, 'projectName':'Professional Program Management System 1.0', 'studentId':3986738, 'judgeId':7684, 'comment':'a little nervous at first, but she knows her stuff!', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Joana Fraga', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':7, 'projectName':'Professional Program Management System 1.0', 
+'studentId':3986738, 'judgeId':7684, 'comment':'comprehensive display of information but graphically dull. diagrams are boring- needs more color', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Joshua Parisaca', 'question':'How significant is the problem?', 'questionId':16, 'grade':7, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 'judgeId':7684, 'comment':'decent service project for a small office', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 
+'student':'Joshua Parisaca', 'question':'How significant is the solution?', 'questionId':17, 'grade':7, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 'judgeId':7684, 'comment':'this is a workable solution given the budget constraints ', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Joshua Parisaca', 'question':'How impressive is the demo?', 'questionId':18, 'grade':5, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5820788, 'judgeId':7684, 'comment':'graphics need work. student is nervous', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Joshua Parisaca', 'question':'How well prepared is the student?', 'questionId':19, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 'judgeId':7684, 'comment':'well prepared and knowledgeable ', 'accepted':'Accepted'}, {'judge':'Eric Peterson', 'student':'Joshua Parisaca', 'question':'How expressive and self-sustained is the poster?', 
+'questionId':20, 'grade':3, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 'judgeId':7684, 'comment':'graphics are poor. radiused window corners have been out of style for at least seven years. pictures need to be color corrected. ', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Sean Monroe', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':7743, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Sean Monroe', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Sean Monroe', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':7743, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Sean Monroe', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Sean Monroe', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':7743, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Carlos Manrique', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Carlos Manrique', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Ortega Francisco', 'student':'Carlos Manrique', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Carlos Manrique', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 
+'student':'Carlos Manrique', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Rolando Carralero', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Traffic Simulator 2.0', 'studentId':3915224, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 
+'student':'Rolando Carralero', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'Traffic Simulator 2.0', 'studentId':3915224, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Rolando Carralero', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'Traffic Simulator 2.0', 'studentId':3915224, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Rolando Carralero', 
+'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Traffic Simulator 2.0', 'studentId':3915224, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Rolando Carralero', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Traffic Simulator 2.0', 'studentId':3915224, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Elliot Nicholson', 
+'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4000283, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Elliot Nicholson', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4000283, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Ortega Francisco', 'student':'Elliot Nicholson', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4000283, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Elliot Nicholson', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4000283, 
+'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Elliot Nicholson', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4000283, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Ricardo Gomez', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BOLO 8.0', 
+'studentId':4174094, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Ricardo Gomez', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Ricardo Gomez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7743, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Ricardo Gomez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, {'judge':'Ortega Francisco', 'student':'Ricardo Gomez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':4174094, 'judgeId':7743, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Guido Ruiz', 'student':'Jose Ayala', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3320295, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Jose Ayala', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3320295, 
+'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Jose Ayala', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3320295, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Jose Ayala', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 
+'studentId':3320295, 'judgeId':7818, 'comment':'Would have wished for a more in depth pilot study to validate designs but otherwise great job!!!', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Jose Ayala', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3320295, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Edvin Li', 
+'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Edvin Li', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Edvin Li', 'question':'How impressive is the demo?', 
+'questionId':18, 'grade':10, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Edvin Li', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':7818, 'comment':'The system architecture design was a bit rough and too broad but otherwise great job!', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 
+'student':'Edvin Li', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Mario Fidalgo', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5160375, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Mario Fidalgo', 
+'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5160375, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Mario Fidalgo', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5160375, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Mario Fidalgo', 'question':'How well prepared is the student?', 
+'questionId':19, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5160375, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Mario Fidalgo', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5160375, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Kyle Ryan', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 
+'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Kyle Ryan', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Kyle Ryan', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 
+'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Kyle Ryan', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Kyle Ryan', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':7818, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Michael Santos', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Michael Santos', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 
+'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Michael Santos', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Michael Santos', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':6046126, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Guido Ruiz', 'student':'Michael Santos', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':7818, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Alfredo Santoyo', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 
+'studentId':2802295, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Alfredo Santoyo', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2802295, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Alfredo Santoyo', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 
+'studentId':2802295, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Alfredo Santoyo', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2802295, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Alfredo Santoyo', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 
+'studentId':2802295, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Enrique Hidalgo', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3353814, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Enrique Hidalgo', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 
+'studentId':3353814, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Enrique Hidalgo', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3353814, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Enrique Hidalgo', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 
+'studentId':3353814, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Enrique Hidalgo', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3353814, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Ranses Melo', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 
+'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Ranses Melo', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Ranses Melo', 'question':'How impressive is the demo?', 
+'questionId':18, 'grade':8, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Ranses Melo', 'question':'How well prepared is the student?', 'questionId':19, 'grade':8, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Ranses Melo', 
+'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Beth Thompson', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4141750, 'judgeId':7927, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Beth Thompson', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4141750, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Beth Thompson', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4141750, 
+'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Beth Thompson', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4141750, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Beth Thompson', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4141750, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Jose Lezcano', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4953998, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Jose Lezcano', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4953998, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Jose Lezcano', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4953998, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Jose Lezcano', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4953998, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Kip Irvine', 'student':'Jose Lezcano', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4953998, 'judgeId':7927, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Kathryn Bello', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 
+'studentId':2106106, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Kathryn Bello', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 'studentId':2106106, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Kathryn Bello', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 
+'studentId':2106106, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Kathryn Bello', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 'studentId':2106106, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Kathryn Bello', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 
+'studentId':2106106, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Ernesto Scerpella', 'question':'How significant is the problem?', 'questionId':16, 'grade':5, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3319529, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Ernesto Scerpella', 'question':'How significant is the solution?', 'questionId':17, 'grade':4, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3319529, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Ernesto Scerpella', 'question':'How impressive is the demo?', 'questionId':18, 'grade':0, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3319529, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Ernesto Scerpella', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3319529, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Ernesto Scerpella', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3319529, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Rodrigo Aguilar', 'question':'How significant is the problem?', 'questionId':16, 'grade':5, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4129026, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Rodrigo Aguilar', 'question':'How significant is the solution?', 'questionId':17, 'grade':6, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4129026, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Rodrigo Aguilar', 'question':'How impressive is the demo?', 'questionId':18, 'grade':3, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4129026, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Rodrigo Aguilar', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4129026, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Rodrigo Aguilar', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4129026, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Edvin Li', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Edvin Li', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Learning with Augmented Reality 3.0', 
+'studentId':4238526, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Edvin Li', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Edvin Li', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 
+'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Edvin Li', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':0, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Eric Fernandez', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 
+'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Eric Fernandez', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Eric Fernandez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':7944, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Eric Fernandez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':7944, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jaime Borras', 'student':'Eric Fernandez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':7944, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Alfredo Santoyo', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2802295, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Alfredo Santoyo', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2802295, 
+'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Alfredo Santoyo', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2802295, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Alfredo Santoyo', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 
+'studentId':2802295, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Alfredo Santoyo', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2802295, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Tiana Ruiz', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 
+'studentId':3282131, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Tiana Ruiz', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Tiana Ruiz', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 
+'studentId':3282131, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Tiana Ruiz', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Tiana Ruiz', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 
+'studentId':3282131, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Richard Rodriguez', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Richard Rodriguez', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':8021, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Richard Rodriguez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Richard Rodriguez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Jim Louro', 'student':'Richard Rodriguez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Juan Molina', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3748243, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Jim Louro', 'student':'Juan Molina', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3748243, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Juan Molina', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3748243, 'judgeId':8021, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Juan Molina', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3748243, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Juan Molina', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3748243, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Jan Boscan', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Jan Boscan', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5962595, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Jan Boscan', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Jan Boscan', 'question':'How well prepared is the student?', 'questionId':19, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5962595, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jim Louro', 'student':'Jan Boscan', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8021, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Tiana Ruiz', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 
+'studentId':3282131, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Tiana Ruiz', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Tiana Ruiz', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 
+'studentId':3282131, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Tiana Ruiz', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Tiana Ruiz', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 
+'studentId':3282131, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Carlos Manrique', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Carlos Manrique', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':8068, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Carlos Manrique', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Carlos Manrique', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Jorge Perez', 'student':'Carlos Manrique', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Daniel Khawand', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':4808229, 'judgeId':8068, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Daniel Khawand', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':4808229, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Daniel Khawand', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':4808229, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Daniel Khawand', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':4808229, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Daniel Khawand', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 
+'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':4808229, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Max Mills', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Max Mills', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Max Mills', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Max Mills', 'question':'How well prepared is the student?', 
+'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Max Mills', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5927293, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Jan Boscan', 
+'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Jan Boscan', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 
+'student':'Jan Boscan', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Jorge Perez', 'student':'Jan Boscan', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Jorge Perez', 'student':'Jan Boscan', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8068, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Jose Casanova', 'question':'How significant is the problem?', 'questionId':16, 'grade':7, 'projectName':'Professional Program Management System 1.0', 'studentId':2643409, 
+'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Jose Casanova', 'question':'How significant is the solution?', 'questionId':17, 'grade':5, 'projectName':'Professional Program Management System 1.0', 'studentId':2643409, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Jose Casanova', 'question':'How impressive is the demo?', 'questionId':18, 'grade':6, 'projectName':'Professional Program Management System 1.0', 
+'studentId':2643409, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Jose Casanova', 'question':'How well prepared is the student?', 'questionId':19, 'grade':5, 'projectName':'Professional Program Management System 1.0', 'studentId':2643409, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Jose Casanova', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':3, 'projectName':'Professional Program Management System 1.0', 
+'studentId':2643409, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Steve Joseph', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Steve Joseph', 'question':'How significant is the solution?', 'questionId':17, 'grade':0, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3510364, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Steve Joseph', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Steve Joseph', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3510364, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Steve Joseph', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Joana Fraga', 'question':'How significant is the problem?', 'questionId':16, 'grade':7, 
+'projectName':'Professional Program Management System 1.0', 'studentId':3986738, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Joana Fraga', 'question':'How significant is the solution?', 'questionId':17, 'grade':5, 'projectName':'Professional Program Management System 1.0', 'studentId':3986738, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Joana Fraga', 'question':'How impressive is the demo?', 
+'questionId':18, 'grade':6, 'projectName':'Professional Program Management System 1.0', 'studentId':3986738, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Joana Fraga', 'question':'How well prepared is the student?', 'questionId':19, 'grade':5, 'projectName':'Professional Program Management System 1.0', 'studentId':3986738, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Joana Fraga', 'question':'How expressive and self-sustained is the poster?', 
+'questionId':20, 'grade':3, 'projectName':'Professional Program Management System 1.0', 'studentId':3986738, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Mario Fidalgo', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'Mobile Judge 9.0', 'studentId':5160375, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Mario Fidalgo', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':8, 'projectName':'Mobile Judge 9.0', 'studentId':5160375, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Mario Fidalgo', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'Mobile Judge 9.0', 'studentId':5160375, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Mario Fidalgo', 'question':'How well prepared is the student?', 'questionId':19, 
+'grade':9, 'projectName':'Mobile Judge 9.0', 'studentId':5160375, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Mario Fidalgo', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'Mobile Judge 9.0', 'studentId':5160375, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Claudia Gourdet', 'question':'How significant is the problem?', 'questionId':16, 
+'grade':7, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':5310066, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Claudia Gourdet', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':5310066, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 
+'student':'Claudia Gourdet', 'question':'How impressive is the demo?', 'questionId':18, 'grade':6, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':5310066, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Claudia Gourdet', 'question':'How well prepared is the student?', 'questionId':19, 'grade':8, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':5310066, 
+'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Carlos Espionsa', 'student':'Claudia Gourdet', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':6, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':5310066, 'judgeId':8100, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Jose Ayala', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 
+'studentId':3320295, 'judgeId':8220, 'comment':' ', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Jose Ayala', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3320295, 'judgeId':8220, 'comment':' ', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Jose Ayala', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 
+'studentId':3320295, 'judgeId':8220, 'comment':' ', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Jose Ayala', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3320295, 'judgeId':8220, 'comment':'Well prepared', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Jose Ayala', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 
+'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3320295, 'judgeId':8220, 'comment':'Good work!', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Omar Kadery', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':8220, 'comment':'Meet the requirements', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Omar Kadery', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':8220, 'comment':'Provides end user ability to generate pdf', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Omar Kadery', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':8220, 'comment':'Good', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Omar Kadery', 'question':'How well prepared is the student?', 
+'questionId':19, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':8220, 'comment':'Yes', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Omar Kadery', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':8220, 'comment':'Yes', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Bernardo Pla', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 
+'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':3885008, 'judgeId':8220, 'comment':' ', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Bernardo Pla', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':3885008, 'judgeId':8220, 'comment':' ', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Bernardo Pla', 'question':'How impressive is the demo?', 
+'questionId':18, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':3885008, 'judgeId':8220, 'comment':'Good', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Bernardo Pla', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':3885008, 'judgeId':8220, 'comment':'Well prepared', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 
+'student':'Bernardo Pla', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':3885008, 'judgeId':8220, 'comment':' ', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Alejandro Corredor', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':8220, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Lorenzo Sanchez', 'student':'Alejandro Corredor', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':8220, 'comment':'Meet the requirements', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Alejandro Corredor', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':8220, 'comment':'good', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 
+'student':'Alejandro Corredor', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':8220, 'comment':'excelent', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Alejandro Corredor', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':8220, 'comment':'It contained good info', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 
+'student':'Kyle Ryan', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':8220, 'comment':'Achieved professor needs', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Kyle Ryan', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':8220, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Kyle Ryan', 
+'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':8220, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Kyle Ryan', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':8220, 'comment':'Good work', 'accepted':'Accepted'}, {'judge':'Lorenzo Sanchez', 'student':'Kyle Ryan', 'question':'How expressive and self-sustained is the poster?', 
+'questionId':20, 'grade':10, 'projectName':'Mobile Judge 9.0', 'studentId':5731790, 'judgeId':8220, 'comment':' ', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Nickolas Morales', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'FLACADA 1.0', 'studentId':3981050, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Nickolas Morales', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'FLACADA 1.0', 
+'studentId':3981050, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Nickolas Morales', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'FLACADA 1.0', 'studentId':3981050, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Nickolas Morales', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'FLACADA 1.0', 'studentId':3981050, 'judgeId':8223, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Nickolas Morales', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'FLACADA 1.0', 'studentId':3981050, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Eric Fernandez', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Luis Puche', 'student':'Eric Fernandez', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Eric Fernandez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Eric Fernandez', 
+'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Eric Fernandez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Joshua Parisaca', 'question':'How significant is the problem?', 
+'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Joshua Parisaca', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Joshua Parisaca', 
+'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Joshua Parisaca', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 
+'student':'Joshua Parisaca', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Hamza Sohail', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5924184, 'judgeId':8223, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Hamza Sohail', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5924184, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Hamza Sohail', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5924184, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Hamza Sohail', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5924184, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Hamza Sohail', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5924184, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Michael Santos', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Michael Santos', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':6046126, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Michael Santos', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Michael Santos', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':6046126, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Luis Puche', 'student':'Michael Santos', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':8223, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Victor Inostroza', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':2114515, 'judgeId':8225, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Victor Inostroza', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':2114515, 'judgeId':8225, 'comment':'Excellent work with practical solutions.', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Victor Inostroza', 'question':'How impressive is the demo?', 'questionId':18, 
+'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':2114515, 'judgeId':8225, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Victor Inostroza', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':2114515, 'judgeId':8225, 'comment':'Very prepared. Thanks.', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Victor Inostroza', 
+'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':2114515, 'judgeId':8225, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Daniel Rivero', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':2932902, 'judgeId':8225, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Lisa Roberts', 'student':'Daniel Rivero', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':2932902, 'judgeId':8225, 'comment':'Very interesting project.', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Daniel Rivero', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':2932902, 'judgeId':8225, 'comment':'Clear explanation. Thanks.', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Daniel Rivero', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':2932902, 'judgeId':8225, 'comment':'Very well prepared.', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Daniel Rivero', 'question':'How expressive and self-sustained is the poster?', 
+'questionId':20, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':2932902, 'judgeId':8225, 'comment':'Nice poster.', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Rolando Moreno', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2995113, 'judgeId':8225, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Rolando Moreno', 
+'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2995113, 'judgeId':8225, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Rolando Moreno', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2995113, 'judgeId':8225, 'comment':'Excellent demo.  Thanks.', 'accepted':'Accepted'}, 
+{'judge':'Lisa Roberts', 'student':'Rolando Moreno', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2995113, 'judgeId':8225, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Rolando Moreno', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':2995113, 
+'judgeId':8225, 'comment':'Very nice job.  Impressive.', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Dafna Steinberg', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'VIP Website 6.0', 'studentId':3119719, 'judgeId':8225, 'comment':'Improving work efficiency is always needed.', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Dafna Steinberg', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'VIP Website 6.0', 
+'studentId':3119719, 'judgeId':8225, 'comment':'Organizing information is always helpful. ', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Dafna Steinberg', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'VIP Website 6.0', 'studentId':3119719, 'judgeId':8225, 'comment':'Nice job. Thanks.', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Dafna Steinberg', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'VIP Website 6.0', 
+'studentId':3119719, 'judgeId':8225, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Dafna Steinberg', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'VIP Website 6.0', 'studentId':3119719, 'judgeId':8225, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Bernardo Pla', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':3885008, 'judgeId':8225, 'comment':'Coding is so important. ', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Bernardo Pla', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':3885008, 'judgeId':8225, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Bernardo Pla', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 
+'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':3885008, 'judgeId':8225, 'comment':'', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Bernardo Pla', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':3885008, 'judgeId':8225, 'comment':'Very prepared. Thanks.', 'accepted':'Accepted'}, {'judge':'Lisa Roberts', 'student':'Bernardo Pla', 
+'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':3885008, 'judgeId':8225, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Sean Monroe', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 
+'student':'Sean Monroe', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Sean Monroe', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Sean Monroe', 
+'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Sean Monroe', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Ernesto Scerpella', 
+'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3319529, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Ernesto Scerpella', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3319529, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Leila Zahedi', 'student':'Ernesto Scerpella', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3319529, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Ernesto Scerpella', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3319529, 'judgeId':8245, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Ernesto Scerpella', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3319529, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Rodrigo Aguilar', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4129026, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Rodrigo Aguilar', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4129026, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Rodrigo Aguilar', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4129026, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Rodrigo Aguilar', 'question':'How well prepared is the student?', 'questionId':19, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4129026, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Rodrigo Aguilar', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4129026, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Jake Lopez', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':5820326, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Jake Lopez', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 
+'studentId':5820326, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Jake Lopez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':5820326, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Jake Lopez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 
+'studentId':5820326, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Leila Zahedi', 'student':'Jake Lopez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':5820326, 'judgeId':8245, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Richard Rodriguez', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'SkillCourt 8.0', 
+'studentId':3669639, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Richard Rodriguez', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Richard Rodriguez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 
+'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Richard Rodriguez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Richard Rodriguez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 
+'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Omar Kadery', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Omar Kadery', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Maral Kargarmoakher', 'student':'Omar Kadery', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Omar Kadery', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Omar Kadery', 
+'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3805724, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Mark Barrett', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Mark Barrett', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Mark Barrett', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Mark Barrett', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 
+'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Mark Barrett', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3960176, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Joana Fraga', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Professional Program Management System 1.0', 
+'studentId':3986738, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Joana Fraga', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Professional Program Management System 1.0', 'studentId':3986738, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Joana Fraga', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Professional Program Management System 1.0', 
+'studentId':3986738, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Joana Fraga', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Professional Program Management System 1.0', 'studentId':3986738, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Joana Fraga', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Professional Program Management System 1.0', 
+'studentId':3986738, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Pachev Joseph', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':5699044, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Pachev Joseph', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':5699044, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Pachev Joseph', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':5699044, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Pachev Joseph', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':5699044, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Maral Kargarmoakher', 'student':'Pachev Joseph', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':5699044, 'judgeId':8362, 'comment':'', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Jose Casanova', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 
+'projectName':'Professional Program Management System 1.0', 'studentId':2643409, 'judgeId':8400, 'comment':'About time we really need this project', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Jose Casanova', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Professional Program Management System 1.0', 'studentId':2643409, 'judgeId':8400, 'comment':'100 percent', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Jose Casanova', 
+'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Professional Program Management System 1.0', 'studentId':2643409, 'judgeId':8400, 'comment':'Jose was great', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Jose Casanova', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Professional Program Management System 1.0', 'studentId':2643409, 'judgeId':8400, 'comment':'Great', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 
+'student':'Jose Casanova', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':0, 'projectName':'Professional Program Management System 1.0', 'studentId':2643409, 'judgeId':8400, 'comment':'', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Tiana Ruiz', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':8400, 'comment':'Very important ', 
+'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Tiana Ruiz', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':8400, 'comment':'Is it going in the right track', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Tiana Ruiz', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 
+'studentId':3282131, 'judgeId':8400, 'comment':'Very clear', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Tiana Ruiz', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':8400, 'comment':'I was very impressed ', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Tiana Ruiz', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 
+'grade':0, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':8400, 'comment':'', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Oscar Yannelli', 'question':'How significant is the problem?', 'questionId':16, 'grade':7, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8400, 'comment':'Poster is difficult to read and has missing words', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Oscar Yannelli', 
+'question':'How significant is the solution?', 'questionId':17, 'grade':6, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8400, 'comment':'', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Oscar Yannelli', 'question':'How impressive is the demo?', 'questionId':18, 'grade':5, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8400, 'comment':'Too confusing', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Oscar Yannelli', 'question':'How well prepared is the student?', 
+'questionId':19, 'grade':9, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8400, 'comment':'Seems he knows the projects purpose', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Oscar Yannelli', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':0, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8400, 'comment':'', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Nicolas Howard', 'question':'How significant is the problem?', 
+'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4805066, 'judgeId':8400, 'comment':'We really need projects like this', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Nicolas Howard', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4805066, 'judgeId':8400, 'comment':'Very impresive', 'accepted':'Accepted'}, 
+{'judge':'Michael Robinson', 'student':'Nicolas Howard', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4805066, 'judgeId':8400, 'comment':'Super', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Nicolas Howard', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4805066, 
+'judgeId':8400, 'comment':'Perfect', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Nicolas Howard', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':0, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4805066, 'judgeId':8400, 'comment':'', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Pachev Joseph', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':5699044, 'judgeId':8400, 'comment':'Interesting project', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Pachev Joseph', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':5699044, 'judgeId':8400, 'comment':'Very important', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Pachev Joseph', 'question':'How impressive is the demo?', 'questionId':18, 
+'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':5699044, 'judgeId':8400, 'comment':'They are very clear and very clean', 'accepted':'Accepted'}, {'judge':'Michael Robinson', 'student':'Pachev Joseph', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':5699044, 'judgeId':8400, 'comment':'Very pleasant and precise', 'accepted':'Accepted'}, 
+{'judge':'Michael Robinson', 'student':'Pachev Joseph', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':0, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':5699044, 'judgeId':8400, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Enrique Hidalgo', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 
+'studentId':3353814, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Enrique Hidalgo', 'question':'How significant is the solution?', 'questionId':17, 'grade':7, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3353814, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Enrique Hidalgo', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 
+'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3353814, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Enrique Hidalgo', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3353814, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Enrique Hidalgo', 
+'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3353814, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Deon Davis', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'NipeshPradhananga ', 'student':'Deon Davis', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Deon Davis', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'NipeshPradhananga ', 'student':'Deon Davis', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Deon Davis', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4140124, 'judgeId':8461, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Edvin Li', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Edvin Li', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':8461, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Edvin Li', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Edvin Li', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':8461, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Edvin Li', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Daniel Khawand', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':4808229, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Daniel Khawand', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':4808229, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Daniel Khawand', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':4808229, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Daniel Khawand', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':4808229, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Daniel Khawand', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 
+'grade':9, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':4808229, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Jose Lezcano', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4953998, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Jose Lezcano', 
+'question':'How significant is the solution?', 'questionId':17, 'grade':7, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4953998, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Jose Lezcano', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4953998, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 
+'student':'Jose Lezcano', 'question':'How well prepared is the student?', 'questionId':19, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4953998, 'judgeId':8461, 'comment':'', 'accepted':'Accepted'}, {'judge':'NipeshPradhananga ', 'student':'Jose Lezcano', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4953998, 'judgeId':8461, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Juan Molina', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3748243, 'judgeId':8515, 'comment':'Infrastructure and systems ver outdated', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Juan Molina', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3748243, 'judgeId':8515, 'comment':'Good solution enabled access to server, sped connection through wifi and cable, new systems ', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Juan Molina', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3748243, 'judgeId':8515, 'comment':'Just displays not a demo', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Juan Molina', 
+'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3748243, 'judgeId':8515, 'comment':'Excellent explanation, good detail, ver professional ', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Juan Molina', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3748243, 
+'judgeId':8515, 'comment':'Good visuals, description of challenge and solution ', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Oscar Yannelli', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8515, 'comment':'Interesting problem for security forces', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Oscar Yannelli', 'question':'How significant is the solution?', 'questionId':17, 
+'grade':9, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8515, 'comment':'Team performed enhancements to previous version, mostly improving interface, speed of access and reporting and logging ', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Oscar Yannelli', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8515, 'comment':'Good demo, could show more detail and use better graphics', 
+'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Oscar Yannelli', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8515, 'comment':'Professional and knowledgeable ', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Oscar Yannelli', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 
+'judgeId':8515, 'comment':'Good poster', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Richard Quintero', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4008937, 'judgeId':8515, 'comment':'Focus on update of landlines to void, interesting problem', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Richard Quintero', 'question':'How significant is the solution?', 'questionId':17, 
+'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4008937, 'judgeId':8515, 'comment':'Enables significant savings ', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Richard Quintero', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4008937, 'judgeId':8515, 'comment':'Only visuals, no demo available', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 
+'student':'Richard Quintero', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4008937, 'judgeId':8515, 'comment':'Good, professional, lacked knowledge of cost and budget', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Richard Quintero', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4008937, 'judgeId':8515, 'comment':'Good structure and content, choice of colors makes hard to read, pictures too dark', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Jan Boscan', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8515, 'comment':"Speed of access to data and apps and print outs is important in a clinical setting, can't slow down care activities. ", 
+'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Jan Boscan', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8515, 'comment':'Achieved significant improvements in speed of network, updated infrastructure at low cost and within budget, good value project. Professional explanation, missing detail on cost and effort', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 
+'student':'Jan Boscan', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8515, 'comment':'Just displays of work performed', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Jan Boscan', 'question':'How well prepared is the student?', 'questionId':19, 'grade':0, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8515, 
+'comment':'Excellent knowledge, very professional', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Jan Boscan', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5962595, 'judgeId':8515, 'comment':'Good visuals and detail on problem and solution', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Michael Santos', 'question':'How significant is the problem?', 
+'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':8515, 'comment':'Outdated systems and infrastructure ', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Michael Santos', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':8515, 'comment':'Needs to address constraints created by old facilities, improves speed and use and reduces cost of operating technology', 
+'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Michael Santos', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':8515, 'comment':'No demo just visuals', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Michael Santos', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':6046126, 'judgeId':8515, 'comment':'Excellent graps of problem and pain points, professional explanation of project undertakings', 'accepted':'Accepted'}, {'judge':'Paulo Gomes', 'student':'Michael Santos', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':6046126, 'judgeId':8515, 'comment':'Good poster, a few typos visible such as viop instead of voip', 'accepted':'Accepted'}, 
+{'judge':'Nagarajan Prabakar', 'student':'Tiana Ruiz', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Tiana Ruiz', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':8530, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Tiana Ruiz', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Tiana Ruiz', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 
+'studentId':3282131, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Tiana Ruiz', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Steve Joseph', 'question':'How significant is the problem?', 'questionId':16, 'grade':0, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3510364, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Steve Joseph', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Steve Joseph', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3510364, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Steve Joseph', 'question':'How well prepared is the student?', 'questionId':19, 'grade':7, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Steve Joseph', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':6, 
+'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Fernando Acosta', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':5456823, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Fernando Acosta', 'question':'How significant is the solution?', 'questionId':17, 
+'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':5456823, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Fernando Acosta', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'BreazeHome 2.0', 'studentId':5456823, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Fernando Acosta', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'BreazeHome 2.0', 
+'studentId':5456823, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Fernando Acosta', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':0, 'projectName':'BreazeHome 2.0', 'studentId':5456823, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Alejandro Corredor', 'question':'How significant is the problem?', 'questionId':16, 'grade':0, 'projectName':'BOLO 8.0', 'studentId':5576559, 
+'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Alejandro Corredor', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Alejandro Corredor', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':8530, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Alejandro Corredor', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Alejandro Corredor', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'BOLO 8.0', 'studentId':5576559, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Nagarajan Prabakar', 'student':'Joshua Parisaca', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Joshua Parisaca', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 
+'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Joshua Parisaca', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Joshua Parisaca', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':5820788, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':'Nagarajan Prabakar', 'student':'Joshua Parisaca', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':5820788, 'judgeId':8530, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Jose Casanova', 'question':'How significant is the problem?', 'questionId':16, 'grade':5, 'projectName':'Professional Program Management System 1.0', 
+'studentId':2643409, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Jose Casanova', 'question':'How significant is the solution?', 'questionId':17, 'grade':5, 'projectName':'Professional Program Management System 1.0', 'studentId':2643409, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Jose Casanova', 'question':'How impressive is the demo?', 'questionId':18, 'grade':6, 'projectName':'Professional Program Management System 1.0', 
+'studentId':2643409, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Jose Casanova', 'question':'How well prepared is the student?', 'questionId':19, 'grade':7, 'projectName':'Professional Program Management System 1.0', 'studentId':2643409, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Jose Casanova', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':5, 'projectName':'Professional Program Management System 1.0', 
+'studentId':2643409, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'David Schiumerini', 'question':'How significant is the problem?', 'questionId':16, 'grade':6, 'projectName':'SkillCourt 8.0', 'studentId':3337819, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'David Schiumerini', 'question':'How significant is the solution?', 'questionId':17, 'grade':7, 'projectName':'SkillCourt 8.0', 'studentId':3337819, 'judgeId':8537, 'comment':'', 
+'accepted':'Accepted'}, {'judge':' Ren�', 'student':'David Schiumerini', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'SkillCourt 8.0', 'studentId':3337819, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'David Schiumerini', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'SkillCourt 8.0', 'studentId':3337819, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'David Schiumerini', 
+'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'SkillCourt 8.0', 'studentId':3337819, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Nickolas Morales', 'question':'How significant is the problem?', 'questionId':16, 'grade':5, 'projectName':'FLACADA 1.0', 'studentId':3981050, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Nickolas Morales', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':7, 'projectName':'FLACADA 1.0', 'studentId':3981050, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Nickolas Morales', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'FLACADA 1.0', 'studentId':3981050, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Nickolas Morales', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'FLACADA 1.0', 
+'studentId':3981050, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Nickolas Morales', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':6, 'projectName':'FLACADA 1.0', 'studentId':3981050, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Daniel Khawand', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':4808229, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Daniel Khawand', 'question':'How significant is the solution?', 'questionId':17, 'grade':6, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':4808229, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Daniel Khawand', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':4808229, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Daniel Khawand', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 'studentId':4808229, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Daniel Khawand', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'WEB-VR: Towards Virtual and Augmented Reality for the WEB 1.0', 
+'studentId':4808229, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Jake Lopez', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':5820326, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Jake Lopez', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 
+'studentId':5820326, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Jake Lopez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':5820326, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Jake Lopez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 
+'studentId':5820326, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':' Ren�', 'student':'Jake Lopez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'Academic Success Initiative - ASI PantherCentric 1.0', 'studentId':5820326, 'judgeId':8537, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Victor Inostroza', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':2114515, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Victor Inostroza', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':2114515, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Victor Inostroza', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':2114515, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Victor Inostroza', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':2114515, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Victor Inostroza', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':2114515, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Beth Thompson', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4141750, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Beth Thompson', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4141750, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Beth Thompson', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4141750, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Beth Thompson', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4141750, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Beth Thompson', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':6, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4141750, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Jose Ponce', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'VIP Website 6.0', 
+'studentId':5455785, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Jose Ponce', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Jose Ponce', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8538, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Jose Ponce', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Jose Ponce', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Patria Rojas', 'student':'Beatriz Hernandez', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Beatriz Hernandez', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Patria Rojas', 'student':'Beatriz Hernandez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Patria Rojas', 'student':'Beatriz Hernandez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Patria Rojas', 'student':'Beatriz Hernandez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Life Management Platform 1.0', 'studentId':5647522, 'judgeId':8538, 'comment':'', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Victor Inostroza', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':2114515, 'judgeId':8568, 
+'comment':'The project gave the students the opportunity to work with old technologies which is an important experience before going to their professional life.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Victor Inostroza', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':2114515, 'judgeId':8568, 'comment':'It provided the client with updated cabling.', 'accepted':'Accepted'}, 
+{'judge':'Roberto Arciniegas', 'student':'Victor Inostroza', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':2114515, 'judgeId':8568, 'comment':'It was a good demo.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Victor Inostroza', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':2114515, 'judgeId':8568, 'comment':'Very well.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Victor Inostroza', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':2114515, 'judgeId':8568, 'comment':'It was a complete presentation of the project.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Stephane Charite', 'question':'How significant is the problem?', 
+'questionId':16, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3245010, 'judgeId':8568, 'comment':'Save time to the police department.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Stephane Charite', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3245010, 'judgeId':8568, 'comment':'Significant, but how it is in version 8.0 and not working.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Stephane Charite', 
+'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3245010, 'judgeId':8568, 'comment':'Not much.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Stephane Charite', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3245010, 'judgeId':8568, 'comment':'Enough.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Stephane Charite', 'question':'How expressive and self-sustained is the poster?', 
+'questionId':20, 'grade':10, 'projectName':'BOLO 8.0', 'studentId':3245010, 'judgeId':8568, 'comment':'Good.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Juan Molina', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3748243, 'judgeId':8568, 'comment':'It gives hands on experience to the students.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Juan Molina', 
+'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3748243, 'judgeId':8568, 'comment':'It gives back to the community.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Juan Molina', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3748243, 'judgeId':8568, 'comment':'It shows the knowledge of the students on this scenario.', 
+'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Juan Molina', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3748243, 'judgeId':8568, 'comment':'It show that he worked hard.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Juan Molina', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3748243, 'judgeId':8568, 'comment':'Well done poster.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Jose Ponce', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8568, 'comment':'Is important that the VIP project has a web site. ', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Jose Ponce', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 
+'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8568, 'comment':'Even though is version 6.0 is not working yet.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Jose Ponce', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8568, 'comment':'The student was proficient in the project.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Jose Ponce', 'question':'How well prepared is the student?', 
+'questionId':19, 'grade':10, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8568, 'comment':'Very well prepared.', 'accepted':'Accepted'}, {'judge':'Roberto Arciniegas', 'student':'Jose Ponce', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8568, 'comment':'Very complete. Explained the problem in a good way.', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Steve Joseph', 
+'question':'How significant is the problem?', 'questionId':16, 'grade':4, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Steve Joseph', 'question':'How significant is the solution?', 'questionId':17, 'grade':4, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 
+'student':'Steve Joseph', 'question':'How impressive is the demo?', 'questionId':18, 'grade':4, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Steve Joseph', 'question':'How well prepared is the student?', 'questionId':19, 'grade':7, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Shahin Vassigh', 'student':'Steve Joseph', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':6, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3510364, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Richard Rodriguez', 'question':'How significant is the problem?', 'questionId':16, 'grade':7, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':8771, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Richard Rodriguez', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Richard Rodriguez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 
+'student':'Richard Rodriguez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':7, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Richard Rodriguez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 'projectName':'SkillCourt 8.0', 'studentId':3669639, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Ranses Melo', 
+'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Ranses Melo', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':8771, 'comment':'', 
+'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Ranses Melo', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Ranses Melo', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 
+'studentId':3765331, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Ranses Melo', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Edvin Li', 'question':'How significant is the problem?', 'questionId':16, 'grade':6, 
+'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Edvin Li', 'question':'How significant is the solution?', 'questionId':17, 'grade':7, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Edvin Li', 'question':'How impressive is the demo?', 'questionId':18, 'grade':5, 'projectName':'Learning with Augmented Reality 3.0', 
+'studentId':4238526, 'judgeId':8771, 'comment':'not much work was done on the application', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Edvin Li', 'question':'How well prepared is the student?', 'questionId':19, 'grade':8, 'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Edvin Li', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':8, 
+'projectName':'Learning with Augmented Reality 3.0', 'studentId':4238526, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Fernando Mojena', 'question':'How significant is the problem?', 'questionId':16, 'grade':4, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Fernando Mojena', 'question':'How significant is the solution?', 'questionId':17, 'grade':7, 
+'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Fernando Mojena', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Fernando Mojena', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 
+'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Shahin Vassigh', 'student':'Fernando Mojena', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':8771, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Sean Monroe', 'question':'How significant is the problem?', 'questionId':16, 
+'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Sean Monroe', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Sean Monroe', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'Agricultural Robotics 3.0', 
+'studentId':1571224, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Sean Monroe', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':1571224, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Sean Monroe', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'Agricultural Robotics 3.0', 
+'studentId':1571224, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Christian Silva', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Christian Silva', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 
+'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Christian Silva', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Christian Silva', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':8972, 
+'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Christian Silva', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 'projectName':'Agricultural Robotics 3.0', 'studentId':2278535, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Ernesto Scerpella', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3319529, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Ernesto Scerpella', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3319529, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Ernesto Scerpella', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3319529, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Ernesto Scerpella', 'question':'How well prepared is the student?', 'questionId':19, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3319529, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Ernesto Scerpella', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 
+'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3319529, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Joseph Casal', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'BreazeHome 2.0', 'studentId':3383076, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Joseph Casal', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 
+'projectName':'BreazeHome 2.0', 'studentId':3383076, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Joseph Casal', 'question':'How impressive is the demo?', 'questionId':18, 'grade':9, 'projectName':'BreazeHome 2.0', 'studentId':3383076, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Joseph Casal', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'BreazeHome 2.0', 'studentId':3383076, 
+'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Joseph Casal', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'BreazeHome 2.0', 'studentId':3383076, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Alberto Castillo', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3966932, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Alberto Castillo', 'question':'How significant is the solution?', 'questionId':17, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3966932, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Alberto Castillo', 'question':'How impressive is the demo?', 'questionId':18, 'grade':8, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':3966932, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Alberto Castillo', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3966932, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Juan Caraballo', 'student':'Alberto Castillo', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 
+'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3966932, 'judgeId':8972, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Matthew Thomson', 'question':'How significant is the problem?', 'questionId':16, 'grade':0, 'projectName':'Traffic Simulator 2.0', 'studentId':2276299, 'judgeId':8973, 'comment':'', 'accepted':'Rejected'}, {'judge':'Blas Montezano', 'student':'Matthew Thomson', 'question':'How significant is the solution?', 'questionId':17, 
+'grade':0, 'projectName':'Traffic Simulator 2.0', 'studentId':2276299, 'judgeId':8973, 'comment':'', 'accepted':'Rejected'}, {'judge':'Blas Montezano', 'student':'Matthew Thomson', 'question':'How impressive is the demo?', 'questionId':18, 'grade':0, 'projectName':'Traffic Simulator 2.0', 'studentId':2276299, 'judgeId':8973, 'comment':'', 'accepted':'Rejected'}, {'judge':'Blas Montezano', 'student':'Matthew Thomson', 'question':'How well prepared is the student?', 'questionId':19, 'grade':7, 'projectName':'Traffic Simulator 2.0', 
+'studentId':2276299, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Matthew Thomson', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':5, 'projectName':'Traffic Simulator 2.0', 'studentId':2276299, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Jose Ayala', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 
+'studentId':3320295, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Jose Ayala', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3320295, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Jose Ayala', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 
+'studentId':3320295, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Jose Ayala', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3320295, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Jose Ayala', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 
+'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3320295, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Carlos Manrique', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Carlos Manrique', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':6, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Carlos Manrique', 'question':'How impressive is the demo?', 'questionId':18, 'grade':6, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Carlos Manrique', 'question':'How well prepared is the student?', 'questionId':19, 'grade':6, 'projectName':'BreazeHome 2.0', 
+'studentId':3763339, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Carlos Manrique', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':0, 'projectName':'BreazeHome 2.0', 'studentId':3763339, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Richard Quintero', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4008937, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Richard Quintero', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4008937, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Richard Quintero', 'question':'How impressive is the demo?', 'questionId':18, 'grade':7, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 
+'studentId':4008937, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Richard Quintero', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4008937, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Richard Quintero', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':9, 
+'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4008937, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Eric Fernandez', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Eric Fernandez', 'question':'How significant is the solution?', 'questionId':17, 
+'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Eric Fernandez', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Eric Fernandez', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 
+'studentId':5057208, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Blas Montezano', 'student':'Eric Fernandez', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':5057208, 'judgeId':8973, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Kathryn Bello', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 
+'studentId':2106106, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Kathryn Bello', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 'studentId':2106106, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Kathryn Bello', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 
+'studentId':2106106, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Kathryn Bello', 'question':'How well prepared is the student?', 'questionId':19, 'grade':0, 'projectName':'Streamlining Community Service Process at FIU 1.0', 'studentId':2106106, 'judgeId':8981, 'comment':'Very well prepared. Knew requirements', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Kathryn Bello', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 
+'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 'studentId':2106106, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Ekaterina Gumnova', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 'studentId':2598224, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Ekaterina Gumnova', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 'studentId':2598224, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Ekaterina Gumnova', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 'studentId':2598224, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Ekaterina Gumnova', 'question':'How well prepared is the student?', 
+'questionId':19, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 'studentId':2598224, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Ekaterina Gumnova', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Streamlining Community Service Process at FIU 1.0', 'studentId':2598224, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Oscar Yannelli', 
+'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Oscar Yannelli', 'question':'How significant is the solution?', 'questionId':17, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Oscar Yannelli', 'question':'How impressive is the demo?', 
+'questionId':18, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Oscar Yannelli', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Oscar Yannelli', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 
+'grade':10, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Rodrigo Aguilar', 'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4129026, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Rodrigo Aguilar', 'question':'How significant is the solution?', 'questionId':17, 
+'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4129026, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Rodrigo Aguilar', 'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4129026, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Rodrigo Aguilar', 'question':'How well prepared is the student?', 
+'questionId':19, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4129026, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Rodrigo Aguilar', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':4129026, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Jose Ponce', 
+'question':'How significant is the problem?', 'questionId':16, 'grade':10, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8981, 'comment':'Used for senior project', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Jose Ponce', 'question':'How significant is the solution?', 'questionId':17, 'grade':0, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8981, 'comment':'Great improvements to VIP', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Jose Ponce', 
+'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Jose Ponce', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8981, 'comment':'', 'accepted':'Accepted'}, {'judge':'Steve Foo', 'student':'Jose Ponce', 'question':'How expressive and self-sustained is the poster?', 
+'questionId':20, 'grade':10, 'projectName':'VIP Website 6.0', 'studentId':5455785, 'judgeId':8981, 'comment':'Good poster.', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Tiana Ruiz', 'question':'How significant is the problem?', 'questionId':16, 'grade':7, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Tiana Ruiz', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':7, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Tiana Ruiz', 'question':'How impressive is the demo?', 'questionId':18, 'grade':6, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Tiana Ruiz', 'question':'How well prepared is the student?', 
+'questionId':19, 'grade':8, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Tiana Ruiz', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':7, 'projectName':'Hemodynamic Imaging of Lower Extremity Ulcers 1.0', 'studentId':3282131, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Ruben Valdes', 
+'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Ruben Valdes', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Ruben Valdes', 
+'question':'How impressive is the demo?', 'questionId':18, 'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Ruben Valdes', 'question':'How well prepared is the student?', 'questionId':19, 'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Ruben Valdes', 
+'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':10, 'projectName':'Exploring the Unconscious 1.0', 'studentId':3734451, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Ranses Melo', 'question':'How significant is the problem?', 'questionId':16, 'grade':9, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, 
+{'judge':'Varzi JeanBaptiste', 'student':'Ranses Melo', 'question':'How significant is the solution?', 'questionId':17, 'grade':9, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Ranses Melo', 'question':'How impressive is the demo?', 'questionId':18, 'grade':5, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 
+'studentId':3765331, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Ranses Melo', 'question':'How well prepared is the student?', 'questionId':19, 'grade':9, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Ranses Melo', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 
+'grade':7, 'projectName':'Apps Arts and Issues: APP-lying the Arts to Digital Communication 1.0', 'studentId':3765331, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Oscar Yannelli', 'question':'How significant is the problem?', 'questionId':16, 'grade':8, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Oscar Yannelli', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':5, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Oscar Yannelli', 'question':'How impressive is the demo?', 'questionId':18, 'grade':5, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Oscar Yannelli', 'question':'How well prepared is the student?', 'questionId':19, 
+'grade':8, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Oscar Yannelli', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':3, 'projectName':'Virtual Roll Call 2.0', 'studentId':3774990, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Fernando Mojena', 'question':'How significant is the problem?', 'questionId':16, 
+'grade':7, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Fernando Mojena', 'question':'How significant is the solution?', 'questionId':17, 'grade':6, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Fernando Mojena', 'question':'How impressive is the demo?', 'questionId':18, 
+'grade':5, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Fernando Mojena', 'question':'How well prepared is the student?', 'questionId':19, 'grade':7, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'Varzi JeanBaptiste', 'student':'Fernando Mojena', 'question':'How expressive and self-sustained is the poster?', 
+'questionId':20, 'grade':7, 'projectName':'Life Management Platform 1.0', 'studentId':4636102, 'judgeId':9010, 'comment':'', 'accepted':'Accepted'}, {'judge':'mario fidalgo', 'student':'Alberto Castillo', 'question':'How significant is the problem?', 'questionId':16, 'grade':0, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3966932, 'judgeId':9012, 'comment':'', 'accepted':'Accepted'}, {'judge':'mario fidalgo', 'student':'Alberto Castillo', 'question':'How significant is the solution?', 
+'questionId':17, 'grade':0, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3966932, 'judgeId':9012, 'comment':'', 'accepted':'Accepted'}, {'judge':'mario fidalgo', 'student':'Alberto Castillo', 'question':'How impressive is the demo?', 'questionId':18, 'grade':4, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3966932, 'judgeId':9012, 'comment':'', 'accepted':'Accepted'}, {'judge':'mario fidalgo', 'student':'Alberto Castillo', 
+'question':'How well prepared is the student?', 'questionId':19, 'grade':0, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3966932, 'judgeId':9012, 'comment':'', 'accepted':'Accepted'}, {'judge':'mario fidalgo', 'student':'Alberto Castillo', 'question':'How expressive and self-sustained is the poster?', 'questionId':20, 'grade':0, 'projectName':'IT Hands-on Non-profit Associations Reconstructions 1.0', 'studentId':3966932, 'judgeId':9012, 'comment':'', 'accepted':'Accepted'}]}, 
+proxy:{type:'memory', reader:{type:'json', rootProperty:'items'}}});
+Ext.define('MobileJudge.model.stats.QuestionAverage', {extend:Ext.data.Model, fields:['questionId', 'question', 'average']});
+Ext.define('MobileJudge.store.stats.QuestionAverage', {extend:Ext.data.Store, alias:'store.questionAverage', model:'MobileJudge.model.stats.QuestionAverage', data:function() {
+  var data = [];
+  var store = Ext.createByAlias('store.questionGrades');
+  console.log(store);
+  store.group('question');
+  var groups = store.getGroups();
+  console.log(groups);
+  groups.each(function(group) {
+    console.log('within group: ');
+    console.log(group);
+    data.push({question:group.config.groupKey, average:group.average('grade')});
+  });
+  return data;
+}()});
+Ext.define('MobileJudge.store.stats.QuestionGrades2', {extend:Ext.data.Store, alias:'store.questionGrades2', groupField:'question', fields:['grade', 'question'], autoLoad:true, pageSize:0});
 Ext.define('MobileJudge.store.unregs.Unregs', {extend:Ext.data.Store, alias:'store.unregjudges', model:'MobileJudge.model.unregs.UnregJudge', proxy:{type:'api', url:'/api/unregjudges'}, remoteSort:true, remoteFilter:true, autoLoad:true, pageSize:25});
-Ext.define('MobileJudge.view.charts.Base', {extend:Ext.Panel, xtype:'basepie', cls:'quick-graph-panel shadow', ui:'light', layout:'fit', platformConfig:{classic:{headerPosition:'top'}, modern:{header:{docked:'top'}}}, tools:[{type:'refresh', tooltip:'Refresh', callback:'onRefreshChart'}], defaults:{width:'100%'}});
-Ext.define('MobileJudge.view.admin.Grades', {extend:MobileJudge.view.charts.Base, xtype:'admin_grades', title:'Admin Grades Panel', items:[{xtype:'polar', bind:'{judges}', platformConfig:{classic:{interactions:'rotatePie3d', insetPadding:20, innerPadding:20, legend:{docked:'right'}, series:[{type:'pie3d', angleField:'total', donut:50, highlight:{margin:40}, label:{field:'state', calloutLine:{length:60, width:3}}, tooltip:{trackMouse:true, renderer:'tipRenderer'}}]}, modern:{interactions:'rotate', 
-insetPadding:10, innerPadding:10, series:[{type:'pie3d', angleField:'total', donut:30, highlight:true, label:{field:'state'}}]}}}]});
+Ext.define('MobileJudge.view.admin.Grades', {extend:Ext.Panel, xtype:'admin_grades', title:'Admin Grades Panel', platformConfig:{classic:{bind:'{student_grade}', width:650, height:500, layout:'fit', items:[{xtype:'chart', insetPadding:{top:60, bottom:20, left:20, right:40}, axes:[{type:'numeric3d', position:'left', grid:true, title:{text:'Average Grade of Students', fontSize:16}}, {type:'category3d', title:{text:'Project', fontSize:16}, position:'bottom', label:{rotate:{degrees:0}}}], series:[{type:'bar3d', 
+highlight:true, xField:'project', yField:['grade'], style:{minGapWidth:10}, highlightCfg:{saturationFactor:1.5}, label:{field:'project', display:'insideStart'}}], sprites:{type:'text', text:'Grade by Project', fontSize:25, width:150, height:30, x:240, y:40}}]}}});
 Ext.define('MobileJudge.view.authentication.Controller', {extend:Ext.app.ViewController, alias:'controller.authentication', loginInProcess:false, init:function(view) {
   OAuth.setOAuthdURL('http://mj.cis.fiu.edu/oauthd');
   OAuth.initialize('uSO6GBdeGO_y9Bdas5jNHTLxBd8');
@@ -89768,8 +93935,6 @@ Ext.define('MobileJudge.view.authentication.Controller', {extend:Ext.app.ViewCon
         res.me().done(function(data) {
           var oauth = model.get('oauth') || {};
           if (data.name) {
-            console.log(data.name);
-            console.log(data.fullName);
             model.set('userName', data.name);
             var s = data.name.split(' ');
             if (s.length > 1) {
@@ -89864,6 +94029,7 @@ Ext.define('MobileJudge.view.authentication.Registration', {extend:Ext.app.ViewM
 }}]}}, formulas:{isValid:{bind:{deep:true, title:'{title}', fullName:'{userName}', salutation:'{salutation}', affiliation:'{affiliation}', email:'{email}', password:'{password}'}, get:function(data) {
   return !Ext.isEmpty(data.fullName) && !Ext.isEmpty(data.password) && !Ext.isEmpty(data.email) && /^([\w-]+(?:\.[\w-]+)*)@((?:[\w-]+\.)*\w[\w-]{0,66})\.([a-z]{2,6}(?:\.[a-z]{2})?)$/i.test(data.email);
 }}}});
+Ext.define('MobileJudge.view.charts.Base', {extend:Ext.Panel, xtype:'basepie', cls:'quick-graph-panel shadow', ui:'light', layout:'fit', platformConfig:{classic:{headerPosition:'top'}, modern:{header:{docked:'top'}}}, tools:[{type:'refresh', tooltip:'Refresh', callback:'onRefreshChart'}], defaults:{width:'100%'}});
 Ext.define('MobileJudge.view.charts.Controller', {extend:Ext.app.ViewController, alias:'controller.charts', model:null, init:function(view) {
   this.model = view.getViewModel();
   if (view.xtype == 'studenthome') {
@@ -90063,6 +94229,52 @@ Ext.define('MobileJudge.view.main.BaseController', {extend:Ext.app.ViewControlle
   }
 }});
 Ext.define('MobileJudge.view.main.Model', {extend:Ext.app.ViewModel, alias:'viewmodel.main', data:{currentView:null, activeTerm:null, userName:null, profilePic:null}});
+Ext.define('MobileJudge.view.stats.Base', {extend:Ext.Panel, xtype:'basechart', cls:'quick-graph-panel shadow', ui:'light', layout:'fit', platformConfig:{classic:{headerPosition:'top'}, modern:{header:{docked:'top'}}}, tools:[{type:'refresh', tooltip:'Refresh'}], defaults:{width:'100%'}});
+Ext.define('MobileJudge.view.stats.GradeByProject', {extend:MobileJudge.view.stats.Base, xtype:'gradeByProject', title:'Average Grade by Project', platformConfig:{classic:{layout:'fit', items:[{xtype:'cartesian', store:{type:'gradeAverage'}, insetPadding:{top:20, bottom:20, left:20, right:20}, legend:{docked:'top', centered:true}, axes:[{type:'numeric3d', position:'left', maximum:50, grid:true, title:{text:'Average Grade', fontSize:16}}, {type:'category3d', title:{text:'Project', fontSize:16}, position:'bottom', 
+renderer:function(axis, v) {
+  v = Ext.util.Format.ellipsis(v, 30);
+  return v.replace(/((?:\w+ ){3})/gi, '$1\n');
+}, label:{fontSize:10, rotate:{degrees:-50}}}], series:[{type:'bar3d', xField:'project', yField:['avgGrade', 'rawGrade'], title:['Approved Grade', 'Raw Grade'], stacked:false, showInLegend:true, style:{minGapWidth:10}, highlightCfg:{saturationFactor:1.5}, label:{field:['avgGrade', 'rawGrade'], display:'insideEnd', renderer:function(text) {
+  return Ext.Number.toFixed(parseFloat(text), 2);
+}}, listeners:{itemclick:function(chart, item) {
+  var store = Ext.createByAlias('store.projectGrades');
+  var msg = '\x3cp style\x3d"text-align: center;"\x3e';
+  msg += 'Average Accepted Grade: ' + item.record.get('avgGrade') + '\x3cbr\x3eAverage Raw Grade: ' + item.record.get('rawGrade');
+  msg += '\x3cbr\x3e-------------------------------';
+  for (var i = 0; i < store.getCount(); i++) {
+    if (item.record.get('project') === store.getAt(i).get('project')) {
+      msg += '\x3cbr\x3e' + store.getAt(i).get('fullname').toString() + ' -- ' + store.getAt(i).get('rawGrade');
+    }
+  }
+  msg += '\x3c/p\x3e';
+  Ext.Msg.alert(item.record.get('project'), msg);
+}}}], plugins:{ptype:'chartitemevents', moveEvents:true}}]}}});
+Ext.define('MobileJudge.view.stats.GradeByQuestion', {extend:MobileJudge.view.stats.Base, xtype:'gradeByQuestion', title:'Average Grade by Question', platformConfig:{classic:{items:[{xtype:'chart', store:{type:'questionAverage'}, insetPadding:{top:60, bottom:20, left:20, right:40}, axes:[{type:'numeric3d', position:'left', maximum:10, grid:true, title:{text:'Average Grade', fontSize:16}}, {type:'category3d', title:{text:'Question', fontSize:16}, position:'bottom', renderer:function(axis, v) {
+  v = Ext.util.Format.ellipsis(v, 50);
+  return v.replace(/((?:\w+ ){3})/gi, '$1\n');
+}, label:{rotate:{degrees:-50}}}], series:[{type:'bar3d', highlight:true, xField:'question', yField:['average'], style:{minGapWidth:10}, highlightCfg:{saturationFactor:1.5}, label:{field:'average', display:'insideEnd', renderer:function(text) {
+  return Ext.Number.toFixed(parseFloat(text), 2);
+}}, listeners:{itemclick:function(chart, item) {
+  var store = Ext.createByAlias('store.questionGrades');
+  var msg = '\x3cp style\x3d"text-align: center;"\x3e';
+  var last = '';
+  for (var i = 0; i < store.getCount(); i++) {
+    if (item.record.get('question') === store.getAt(i).get('question')) {
+      if (store.getAt(i).get('comment') !== null) {
+        var split = store.getAt(i).get('judge').toString().split(' ');
+        var current = store.getAt(i).get('judge').toString();
+        if (current !== last) {
+          msg += '\x3cbr\x3e-------------------------------';
+        }
+        msg += '\x3cbr\x3e' + split[0].charAt(0) + '. ' + split[1] + ' (' + store.getAt(i).get('student') + ') -- ' + store.getAt(i).get('grade');
+        last = current;
+      }
+    }
+  }
+  msg += '\x3c/p\x3e';
+  Ext.Msg.alert(item.record.get('question'), msg);
+}}}], plugins:{ptype:'chartitemevents', moveEvents:true}}]}}});
+Ext.define('MobileJudge.view.stats.StatsModel', {extend:Ext.app.ViewModel, alias:'viewmodel.stats', stores:{avgProjectGrades:{type:'gradeAverage', storeId:'statsProjectGrades', proxy:{type:'api', url:'/api/stats/project_grades'}}, avgQuestionGrades:{type:'questionAverage', storeId:'statsQuestionGrades', proxy:{type:'api', url:'/api/stats/question_grades'}}}});
 Ext.define('MobileJudge.view.students.Controller', {extend:Ext.app.ViewController, alias:'controller.student', model:null, init:function(view) {
   this.model = view.getViewModel();
   this.loadProfile();
@@ -90176,9 +94388,9 @@ Ext.define('MobileJudge.view.authentication.Register', {extend:MobileJudge.view.
 align:'stretch'}, bbar:{items:['-\x3e', {ui:'soft-blue', iconCls:'x-fa fa-angle-left', text:'Back', handler:'onSetPageOne'}, '-\x3e', {ui:'soft-green', iconAlign:'right', iconCls:'x-fa fa-angle-right', text:'Done', handler:'onDoneRegister'}, '-\x3e']}, items:[{xtype:'label', cls:'lock-screen-top-label', text:'Please select any of the following students whom ' + 'you may have a conflict of interests with. For example: colleagues, relatives, friends, etc.', height:55}, {xtype:'box', height:10, userCls:'auth-dialog', 
 html:'\x3cdiv class\x3d"outer-div"\x3e\x3cdiv class\x3d"seperator"\x3e\x3c/div\x3e\x3c/div\x3e'}, {xtype:'container', flex:1, scrollable:'y', items:[{xtype:'dataview', reference:'gridConflicts', cls:'conflictSelector', loadMask:false, trackOver:false, itemSelector:'.conflictSelector .search-user-item', selectedItemCls:'selected', selectionModel:{type:'dataviewmodel', mode:'SIMPLE'}, tpl:['\x3ctpl for\x3d"."\x3e', '\x3cdiv class\x3d"search-user-item"\x3e', '\x3cdiv class\x3d"search-user-image"\x3e', 
 '\x3cimg src\x3d"{profileImgUrl}" class\x3d"circular" width\x3d"50" height\x3d"50"/\x3e', '\x3c/div\x3e', '\x3cdiv class\x3d"search-user-content"\x3e', '\x3cdiv class\x3d"search-user-title"\x3e{fullName}\x3c/div\x3e', '\x3cdiv class\x3d"search-user-email"\x3e{project}\x3c/div\x3e', '\x3c/div\x3e', '\x3c/div\x3e', '\x3c/tpl\x3e'], bind:{store:'{conflicts}'}}]}]}]}]});
-Ext.define('MobileJudge.view.authentication.SignUp', {extend:MobileJudge.view.authentication.Dialog, xtype:'signup', layout:{type:'vbox', align:'stretch'}, defaultButton:'submitButton', autoComplete:true, defaults:{margin:'10 0', selectOnFocus:true, hideLabel:true, allowBlank:false, cls:'auth-textbox', height:55}, bind:'{judges}', items:[{xtype:'label', cls:'lock-screen-top-label', text:'Create an account', height:10}, {xtype:'textfield', bind:'{salutation}', emptyText:'Salutation: Mr, Mrs, Dr ...', 
-triggers:{glyphed:{cls:'trigger-glyph-noop auth-title-trigger'}}, allowBlank:true}, {xtype:'textfield', emptyText:'Full Name: John Smith', bind:'{userName}', triggers:{glyphed:{cls:'trigger-glyph-noop auth-email-trigger'}}}, {xtype:'textfield', bind:'{title}', emptyText:'Title: CEO, President, Student ...', triggers:{glyphed:{cls:'trigger-glyph-noop auth-title-trigger'}}, allowBlank:true}, {xtype:'textfield', bind:'{affiliation}', emptyText:'Organization: FIU, IBM, Google ...', triggers:{glyphed:{cls:'trigger-glyph-noop auth-affiliation-trigger'}}, 
-allowBlank:true}, {xtype:'textfield', name:'email', emptyText:'Email: user@example.com', bind:'{email}', triggers:{glyphed:{cls:'trigger-glyph-noop auth-envelope-trigger'}}}, {xtype:'textfield', emptyText:'Password: Remember this password!', name:'password', inputType:'password', bind:'{password}', triggers:{glyphed:{cls:'trigger-glyph-noop auth-password-trigger'}}, id:'firstPass'}, {xtype:'textfield', emptyText:'Confirm Password: Input same password!', name:'password', inputType:'password', triggers:{glyphed:{cls:'trigger-glyph-noop auth-password-trigger'}}, 
+Ext.define('MobileJudge.view.authentication.SignUp', {extend:MobileJudge.view.authentication.Dialog, xtype:'signup', layout:{type:'vbox', align:'stretch'}, defaultButton:'submitButton', autoComplete:true, defaults:{margin:'10 0', selectOnFocus:true, hideLabel:true, allowBlank:false, cls:'auth-textbox', height:55}, items:[{xtype:'label', cls:'lock-screen-top-label', text:'Create an account', height:10}, {xtype:'textfield', bind:'{salutation}', emptyText:'Salutation: Mr, Mrs, Dr ...', triggers:{glyphed:{cls:'trigger-glyph-noop auth-title-trigger'}}, 
+allowBlank:true}, {xtype:'textfield', emptyText:'Full Name: John Smith', bind:'{userName}', triggers:{glyphed:{cls:'trigger-glyph-noop auth-email-trigger'}}}, {xtype:'textfield', bind:'{title}', emptyText:'Title: CEO, President, Student ...', triggers:{glyphed:{cls:'trigger-glyph-noop auth-title-trigger'}}, allowBlank:true}, {xtype:'textfield', bind:'{affiliation}', emptyText:'Organization: FIU, IBM, Google ...', triggers:{glyphed:{cls:'trigger-glyph-noop auth-affiliation-trigger'}}, allowBlank:true}, 
+{xtype:'textfield', name:'email', emptyText:'Email: user@example.com', bind:'{email}', triggers:{glyphed:{cls:'trigger-glyph-noop auth-envelope-trigger'}}}, {xtype:'textfield', emptyText:'Password: Remember this password!', name:'password', inputType:'password', bind:'{password}', triggers:{glyphed:{cls:'trigger-glyph-noop auth-password-trigger'}}, id:'firstPass'}, {xtype:'textfield', emptyText:'Confirm Password: Input same password!', name:'password', inputType:'password', triggers:{glyphed:{cls:'trigger-glyph-noop auth-password-trigger'}}, 
 initialPassField:'firstPass', vtype:'password'}, {xtype:'button', scale:'large', ui:'soft-blue', reference:'submitButton', margin:'5 0', iconAlign:'right', iconCls:'x-fa fa-angle-right', text:'Signup', bind:false, formBind:true, handler:'onSetPageTwo'}, {xtype:'box', height:10, html:'\x3cdiv class\x3d"outer-div"\x3e\x3cdiv class\x3d"seperator"\x3eLink your social accounts\x3c/div\x3e\x3c/div\x3e'}, {xtype:'container', layout:{type:'hbox', pack:'center'}, cls:'social-login', defaultType:'button', 
 defaults:{scale:'large', width:60}, items:[{ui:'fiu', reference:'linkfiu', userCls:'btn-oauth', preventDefault:false}, {xtype:'box', width:1, html:'\x3cdiv class\x3d"outer-div"\x3e\x3cdiv class\x3d"seperator"\x3e\x3c/div\x3e\x3c/div\x3e', margin:'0 8'}, {ui:'google', reference:'linkgoogle', userCls:'btn-oauth', iconCls:'x-fa fa-google-plus', preventDefault:false}, {xtype:'box', width:1, html:'\x3cdiv class\x3d"outer-div"\x3e\x3cdiv class\x3d"seperator"\x3e\x3c/div\x3e\x3c/div\x3e', margin:'0 8'}, 
 {ui:'linkedin2', reference:'linklinkedin2', userCls:'btn-oauth', iconCls:'x-fa fa-linkedin', preventDefault:false}, {xtype:'box', width:1, html:'\x3cdiv class\x3d"outer-div"\x3e\x3cdiv class\x3d"seperator"\x3e\x3c/div\x3e\x3c/div\x3e', margin:'0 8'}, {ui:'facebook', reference:'linkfacebook', userCls:'btn-oauth', iconCls:'x-fa fa-facebook', preventDefault:false}, {xtype:'box', width:1, html:'\x3cdiv class\x3d"outer-div"\x3e\x3cdiv class\x3d"seperator"\x3e\x3c/div\x3e\x3c/div\x3e', margin:'0 8'}, {ui:'twitter', 
@@ -91607,8 +95819,8 @@ Ext.define('MobileJudge.view.main.Controller', {extend:MobileJudge.view.main.Bas
   if (!existingItem) {
     try {
       newView = Ext.create({xtype:view, routeId:hashTag, hideMode:'offsets'});
-    } catch (e$37) {
-      console.log(e$37);
+    } catch (e$38) {
+      console.log(e$38);
       newView = Ext.create({xtype:'page404', routeId:hashTag, hideMode:'offsets'});
     }
   }
@@ -92148,9 +96360,9 @@ items:[{fieldLabel:'Url', bind:'{selectedTerm.srProjectUrl}'}, {fieldLabel:'Toke
 editable:false, emptyText:'Select a Template', displayField:'name', valueField:'id', fieldLabel:'Reject Template', bind:{store:'templates4Term', value:'{selectedTerm.rejectInviteTemplate}'}}, {xtype:'combobox', queryMode:'local', editable:false, emptyText:'Select a Template', displayField:'name', valueField:'id', fieldLabel:'Accept Invite Template', bind:{store:'templates4Term', value:'{selectedTerm.acceptInviteTemplate}'}}, {xtype:'combobox', queryMode:'local', editable:false, emptyText:'Select a Template', 
 displayField:'name', valueField:'id', fieldLabel:'Remove Template', bind:{store:'templates4Term', value:'{selectedTerm.removeInviteTemplate}'}}]}, {labelClsExtra:'x-fa fa-clock-o', fieldLabel:'Event Info', items:[{fieldLabel:'Start Time', xtype:'fieldcontainer', layout:'hbox', userCls:'dateFieldContainer', items:[{xtype:'datefield', flex:1, bind:'{selectedTerm.startDate}'}, {xtype:'timefield', flex:1, bind:'{selectedTerm.startTime}'}]}, {fieldLabel:'End Time', xtype:'fieldcontainer', layout:'hbox', 
 userCls:'dateFieldContainer', items:[{xtype:'datefield', flex:1, bind:'{selectedTerm.endDate}'}, {xtype:'timefield', flex:1, bind:'{selectedTerm.endTime}'}]}, {fieldLabel:'Deadline', xtype:'fieldcontainer', layout:'hbox', userCls:'dateFieldContainer', items:[{xtype:'datefield', flex:1, bind:'{selectedTerm.deadlineDate}'}, {xtype:'timefield', flex:1, bind:'{selectedTerm.deadlineTime}'}]}, {fieldLabel:'Place', bind:'{selectedTerm.location}'}, {fieldLabel:'Map Url', bind:'{selectedTerm.mapImageUrl}'}]}]});
-Ext.define('MobileJudge.view.stats.AdminStats', {extend:Ext.container.Container, xtype:'admin_stats', controller:'charts', viewModel:{type:'charts'}, layout:'responsivecolumn', defaultType:'basepie', defaults:{iconCls:'x-fa fa-pie-chart', userCls:'big-33 small-100', height:300, defaults:{animation:!Ext.isIE9m && Ext.os.is.Desktop}}, items:[{xtype:'admin_grades', height:400, userCls:'big-100 small-100'}]});
 Ext.define('MobileJudge.view.stats.JudgeStats', {extend:Ext.container.Container, xtype:'judge_stats', controller:'charts', viewModel:{type:'charts'}, layout:'responsivecolumn', defaultType:'basepie', defaults:{iconCls:'x-fa fa-pie-chart', userCls:'big-33 small-100', height:300, defaults:{animation:!Ext.isIE9m && Ext.os.is.Desktop}}, items:[{xtype:'judge_grades', height:400, userCls:'big-100 small-100'}]});
 Ext.define('MobileJudge.view.stats.StudentStats', {extend:Ext.container.Container, xtype:'student_stats', controller:'charts', viewModel:{type:'charts'}, layout:'responsivecolumn', defaultType:'basepie', defaults:{iconCls:'x-fa fa-pie-chart', userCls:'big-33 small-100', height:300, defaults:{animation:!Ext.isIE9m && Ext.os.is.Desktop}}, items:[{xtype:'student_grades', height:400, userCls:'big-100 small-100'}]});
+Ext.define('MobileJudge.view.stats.AdminStats', {extend:Ext.container.Container, xtype:'admin_stats', controller:'charts', viewModel:{type:'charts'}, layout:'responsivecolumn', defaultType:'basechart', defaults:{iconCls:'x-fa fa-pie-chart', userCls:'big-33 small-100', height:750, defaults:{animation:!Ext.isIE9m && Ext.os.is.Desktop}}, items:[{xtype:'gradeByProject', userCls:'big-100 small-100'}, {xtype:'gradeByQuestion', userCls:'big-100 small-100'}]});
 Ext.define('MobileJudge.view.students.Home', {extend:Ext.container.Container, xtype:'studenthome', layout:'responsivecolumn', cls:'userProfile-container', controller:'student', viewModel:{data:{}}, items:[{xtype:'profile', userCls:'big-100 small-100 shadow'}]});
 Ext.define('MobileJudge.view.unregistered.Controller', {extend:Ext.app.ViewController, alias:'controller.unregistered', windows:{}, model:null, deleteRecord:{}, init:function(view) {
   this.model = view.getViewModel();
@@ -92163,9 +96375,12 @@ Ext.define('MobileJudge.view.unregistered.Controller', {extend:Ext.app.ViewContr
   Ext.widget({xtype:'register', record:record, viewModel:{data:{unregjudges:record}}});
 }});
 Ext.define('MobileJudge.view.unregistered.Index', {extend:Ext.tab.Panel, alias:'widget.unregistered', controller:'unregistered', viewModel:{type:'unregistered'}, cls:'shadow', activeTab:0, margin:20, defaults:{cls:'user-grid', viewConfig:{preserveScrollOnRefresh:true, preserveScrollOnReload:true, loadMask:false}, headerBorders:false, rowLines:false}, items:[{xtype:'unregjudges', title:'Judges', iconCls:'x-fa fa-legal'}]});
-Ext.define('MobileJudge.view.unregistered.Model', {extend:Ext.app.ViewModel, alias:'viewmodel.unregistered', requires:[], stores:{unregjudges:{type:'unregjudges', storeId:'unregjudges'}}});
-Ext.create('Ext.data.Store', {storeId:'unregjudges', fields:['id', 'fullName', 'email'], data:[]});
-Ext.define('MobileJudge.view.unregistered.unregJudges', {extend:Ext.grid.Panel, alias:'widget.unregjudges', store:'unregjudges', listeners:{cellclick:'onTap'}, bind:'{unregjudges}', dockedItems:[{xtype:'pagingtoolbar', dock:'bottom', displayInfo:true, bind:'{unregjudges}'}], columns:[{xtype:'gridcolumn', dataIndex:'id', text:'', flex:1}, {xtype:'gridcolumn', dataIndex:'fullName', text:'Name', flex:1}, {xtype:'gridcolumn', dataIndex:'email', text:'Email', flex:2}]});
+Ext.define('MobileJudge.view.unregistered.Model', {extend:Ext.app.ViewModel, alias:'viewmodel.unregistered', stores:{unregjudges:{type:'unregjudges', storeId:'unregjudges'}}});
+Ext.create('Ext.data.Store', {storeId:'unregjudges', listeners:{load:function() {
+  var grid = Ext.getCmp('unregjudges');
+}}, fields:['id', 'fullName', 'email'], data:[]});
+Ext.define('MobileJudge.view.unregistered.unregJudges', {extend:Ext.grid.Panel, alias:'widget.unregjudges', store:'unregjudges', listeners:{cellclick:'onTap'}, bind:'{unregjudges}', store:Ext.StoreMgr.lookup('unregjudges'), dockedItems:[{xtype:'pagingtoolbar', dock:'bottom', displayInfo:true, bind:'{unregjudges}'}], columns:[{xtype:'gridcolumn', dataIndex:'id', text:'', flex:1}, {xtype:'gridcolumn', dataIndex:'fullName', text:'Name', flex:1}, {xtype:'gridcolumn', dataIndex:'email', text:'Email', 
+flex:2}]});
 Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtype:'unreghome', layout:'responsivecolumn', cls:'userProfile-container', controller:'unregistered', viewModel:{data:{}}, items:[{xtype:'profile', userCls:'big-100 small-100 shadow'}]});
 (function(global, factory) {
   if (typeof module === 'object' && typeof module.exports === 'object') {
@@ -92286,7 +96501,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
       if (obj.constructor && !hasOwn.call(obj, 'constructor') && !hasOwn.call(obj.constructor.prototype, 'isPrototypeOf')) {
         return false;
       }
-    } catch (e$38) {
+    } catch (e$39) {
       return false;
     }
     if (support.ownLast) {
@@ -92471,7 +96686,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
     try {
       push.apply(arr = slice.call(preferredDoc.childNodes), preferredDoc.childNodes);
       arr[preferredDoc.childNodes.length].nodeType;
-    } catch (e$39) {
+    } catch (e$40) {
       push = {apply:arr.length ? function(target, els) {
         push_native.apply(target, slice.call(els));
       } : function(target, els) {
@@ -92577,7 +96792,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
       var div = document.createElement('div');
       try {
         return !!fn(div);
-      } catch (e$40) {
+      } catch (e$41) {
         return false;
       } finally {
         if (div.parentNode) {
@@ -92835,7 +97050,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
           if (ret || support.disconnectedMatch || elem.document && elem.document.nodeType !== 11) {
             return ret;
           }
-        } catch (e$41) {
+        } catch (e$42) {
         }
       }
       return Sizzle(expr, document, null, [elem]).length > 0;
@@ -93969,14 +98184,14 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
           var top = false;
           try {
             top = window.frameElement == null && document.documentElement;
-          } catch (e$42) {
+          } catch (e$43) {
           }
           if (top && top.doScroll) {
             (function doScrollCheck() {
               if (!jQuery.isReady) {
                 try {
                   top.doScroll('left');
-                } catch (e$43) {
+                } catch (e$44) {
                   return setTimeout(doScrollCheck, 50);
                 }
                 detach();
@@ -94021,7 +98236,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
       support.deleteExpando = true;
       try {
         delete div.test;
-      } catch (e$44) {
+      } catch (e$45) {
         support.deleteExpando = false;
       }
     }
@@ -94039,7 +98254,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
       if (typeof data === 'string') {
         try {
           data = data === 'true' ? true : data === 'false' ? false : data === 'null' ? null : +data + '' === data ? +data : rbrace.test(data) ? jQuery.parseJSON(data) : data;
-        } catch (e$45) {
+        } catch (e$46) {
         }
         jQuery.data(elem, key, data);
       } else {
@@ -94352,7 +98567,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
       support.deleteExpando = true;
       try {
         delete div.test;
-      } catch (e$46) {
+      } catch (e$47) {
         support.deleteExpando = false;
       }
     }
@@ -94555,7 +98770,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
           jQuery.event.triggered = type;
           try {
             elem[type]();
-          } catch (e$47) {
+          } catch (e$48) {
           }
           jQuery.event.triggered = undefined;
           if (tmp) {
@@ -94671,7 +98886,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
       try {
         this.focus();
         return false;
-      } catch (e$48) {
+      } catch (e$49) {
       }
     }
   }, delegateType:'focusin'}, blur:{trigger:function() {
@@ -95271,7 +99486,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
             }
           }
           elem = 0;
-        } catch (e$49) {
+        } catch (e$50) {
         }
       }
       if (elem) {
@@ -95673,7 +99888,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
       if (!hooks || !('set' in hooks) || (value = hooks.set(elem, value, extra)) !== undefined) {
         try {
           style[name] = value;
-        } catch (e$50) {
+        } catch (e$51) {
         }
       }
     } else {
@@ -96504,7 +100719,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
       try {
         this[name] = undefined;
         delete this[name];
-      } catch (e$51) {
+      } catch (e$52) {
       }
     });
   }});
@@ -96695,7 +100910,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
         xml.async = 'false';
         xml.loadXML(data);
       }
-    } catch (e$52) {
+    } catch (e$53) {
       xml = undefined;
     }
     if (!xml || !xml.documentElement || xml.getElementsByTagName('parsererror').length) {
@@ -96706,7 +100921,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
   var ajaxLocParts, ajaxLocation, rhash = /#.*$/, rts = /([?&])_=[^&]*/, rheaders = /^(.*?):[ \t]*([^\r\n]*)\r?$/mg, rlocalProtocol = /^(?:about|app|app-storage|.+-extension|file|res|widget):$/, rnoContent = /^(?:GET|HEAD)$/, rprotocol = /^\/\//, rurl = /^([\w.+-]+:)(?:\/\/(?:[^\/?#]*@|)([^\/?#:]*)(?::(\d+)|)|)/, prefilters = {}, transports = {}, allTypes = '*/'.concat('*');
   try {
     ajaxLocation = location.href;
-  } catch (e$53) {
+  } catch (e$54) {
     ajaxLocation = document.createElement('a');
     ajaxLocation.href = '';
     ajaxLocation = ajaxLocation.href;
@@ -96849,8 +101064,8 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
               } else {
                 try {
                   response = conv(response);
-                } catch (e$54) {
-                  return {state:'parsererror', error:conv ? e$54 : 'No conversion from ' + prev + ' to ' + current};
+                } catch (e$55) {
+                  return {state:'parsererror', error:conv ? e$55 : 'No conversion from ' + prev + ' to ' + current};
                 }
               }
             }
@@ -96987,11 +101202,11 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
       try {
         state = 1;
         transport.send(requestHeaders, done);
-      } catch (e$55) {
+      } catch (e$56) {
         if (state < 2) {
-          done(-1, e$55);
+          done(-1, e$56);
         } else {
-          throw e$55;
+          throw e$56;
         }
       }
     }
@@ -97251,7 +101466,7 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
                 }
                 try {
                   statusText = xhr.statusText;
-                } catch (e$56) {
+                } catch (e$57) {
                   statusText = '';
                 }
                 if (!status && options.isLocal && !options.crossDomain) {
@@ -97287,13 +101502,13 @@ Ext.define('MobileJudge.view.unregs.Home', {extend:Ext.container.Container, xtyp
   function createStandardXHR() {
     try {
       return new window.XMLHttpRequest;
-    } catch (e$57) {
+    } catch (e$58) {
     }
   }
   function createActiveXHR() {
     try {
       return new window.ActiveXObject('Microsoft.XMLHTTP');
-    } catch (e$58) {
+    } catch (e$59) {
     }
   }
   jQuery.ajaxSetup({accepts:{script:'text/javascript, application/javascript, application/ecmascript, application/x-ecmascript'}, contents:{script:/(?:java|ecma)script/}, converters:{'text script':function(text) {

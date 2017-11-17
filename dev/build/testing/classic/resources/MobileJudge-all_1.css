@@ -902,6 +902,108 @@ td.x-frame-br {
 .x-btn-mc {
     overflow: visible;
 }
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:1 */
+.x-segmented-button {
+    display: table;
+    table-layout: fixed;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:6 */
+.x-segmented-button-item {
+    display: table-cell;
+    vertical-align: top;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:10 */
+.x-segmented-button-item > .x-frame {
+    width: 100%;
+    height: 100%;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:17 */
+.x-segmented-button-item .x-btn-mc {
+    width: 100%;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:23 */
+.x-segmented-button-item-horizontal {
+    display: table-cell;
+    height: 100%;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:30 */
+.x-segmented-button-item-horizontal.x-segmented-button-first {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:35 */
+.x-segmented-button-item-horizontal.x-segmented-button-first .x-btn-tr,
+.x-segmented-button-item-horizontal.x-segmented-button-first .x-btn-mr,
+.x-segmented-button-item-horizontal.x-segmented-button-first .x-btn-br {
+    display: none;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:43 */
+.x-segmented-button-item-horizontal.x-segmented-button-middle {
+    border-radius: 0;
+    border-left: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:48 */
+.x-segmented-button-item-horizontal.x-segmented-button-middle .x-btn-tl,
+.x-segmented-button-item-horizontal.x-segmented-button-middle .x-btn-tr,
+.x-segmented-button-item-horizontal.x-segmented-button-middle .x-btn-ml,
+.x-segmented-button-item-horizontal.x-segmented-button-middle .x-btn-mr,
+.x-segmented-button-item-horizontal.x-segmented-button-middle .x-btn-bl,
+.x-segmented-button-item-horizontal.x-segmented-button-middle .x-btn-br {
+    display: none;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:59 */
+.x-segmented-button-item-horizontal.x-segmented-button-last {
+    border-left: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:65 */
+.x-segmented-button-item-horizontal.x-segmented-button-last .x-btn-tl,
+.x-segmented-button-item-horizontal.x-segmented-button-last .x-btn-ml,
+.x-segmented-button-item-horizontal.x-segmented-button-last .x-btn-bl {
+    display: none;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:74 */
+.x-segmented-button-row {
+    display: table-row;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:79 */
+.x-segmented-button-item-vertical.x-segmented-button-first {
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:84 */
+.x-segmented-button-item-vertical.x-segmented-button-first .x-btn-bl,
+.x-segmented-button-item-vertical.x-segmented-button-first .x-btn-bc,
+.x-segmented-button-item-vertical.x-segmented-button-first .x-btn-br {
+    display: none;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:92 */
+.x-segmented-button-item-vertical.x-segmented-button-middle {
+    border-radius: 0;
+    border-top: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:97 */
+.x-segmented-button-item-vertical.x-segmented-button-middle .x-btn-tl,
+.x-segmented-button-item-vertical.x-segmented-button-middle .x-btn-tc,
+.x-segmented-button-item-vertical.x-segmented-button-middle .x-btn-tr,
+.x-segmented-button-item-vertical.x-segmented-button-middle .x-btn-bl,
+.x-segmented-button-item-vertical.x-segmented-button-middle .x-btn-bc,
+.x-segmented-button-item-vertical.x-segmented-button-middle .x-btn-br {
+    display: none;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:108 */
+.x-segmented-button-item-vertical.x-segmented-button-last {
+    border-top: 0;
+    border-top-right-radius: 0;
+    border-top-left-radius: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/button/Segmented.scss:114 */
+.x-segmented-button-item-vertical.x-segmented-button-last .x-btn-tl,
+.x-segmented-button-item-vertical.x-segmented-button-last .x-btn-tc,
+.x-segmented-button-item-vertical.x-segmented-button-last .x-btn-tr {
+    display: none;
+}
 /* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/src/panel/Title.scss:1 */
 .x-title-icon {
     background-repeat: no-repeat;
@@ -2889,6 +2991,101 @@ body > .x-mask {
     -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)";
     opacity: 0.5;
 }
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1100 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-small.x-segmented-button-first {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1102 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-small.x-segmented-button-first .x-btn-default-small-mc {
+    padding-right: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1106 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-small.x-segmented-button-middle {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1108 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-small.x-segmented-button-middle .x-btn-default-small-mc {
+    padding-right: 7px !important;
+    padding-left: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1114 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-small.x-segmented-button-last .x-btn-default-small-mc {
+    padding-left: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1121 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-small.x-segmented-button-first {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1123 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-small.x-segmented-button-first .x-btn-default-small-mc {
+    padding-bottom: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1127 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-small.x-segmented-button-middle {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1129 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-small.x-segmented-button-middle .x-btn-default-small-mc {
+    padding-top: 7px !important;
+    padding-bottom: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1135 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-small.x-segmented-button-last .x-btn-default-small-mc {
+    padding-top: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1141 */
+.x-nbr .x-segmented-button-item.x-btn-default-small:after {
+    content: ' ';
+    border-style: solid;
+    border-width: 0;
+    position: absolute;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1159 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-small:after {
+    top: 1px;
+    right: 0;
+    bottom: 1px;
+    left: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1165 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-small.x-segmented-button-first:after {
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1168 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-small.x-segmented-button-last:after {
+    right: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1174 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-small:after {
+    top: 0;
+    right: 1px;
+    bottom: 0;
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1180 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-small.x-segmented-button-first:after {
+    top: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1183 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-small.x-segmented-button-last:after {
+    bottom: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1190 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-default-small:after {
+    border-width: 1px;
+    border-color: #cbe5f1;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1204 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-over.x-btn-default-small:after {
+    border-width: 1px;
+    border-color: #cae2ed;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1219 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-menu-active.x-btn-default-small:after,
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-pressed.x-btn-default-small:after {
+    border-width: 1px;
+    border-color: #c8dce5;
+}
 /* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
 .x-btn-default-medium {
     -webkit-border-radius: 0;
@@ -3294,6 +3491,101 @@ body > .x-mask {
 .x-btn-disabled.x-btn-default-medium {
     -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)";
     opacity: 0.5;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1100 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-medium.x-segmented-button-first {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1102 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-medium.x-segmented-button-first .x-btn-default-medium-mc {
+    padding-right: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1106 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-medium.x-segmented-button-middle {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1108 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-medium.x-segmented-button-middle .x-btn-default-medium-mc {
+    padding-right: 8px !important;
+    padding-left: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1114 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-medium.x-segmented-button-last .x-btn-default-medium-mc {
+    padding-left: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1121 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-medium.x-segmented-button-first {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1123 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-medium.x-segmented-button-first .x-btn-default-medium-mc {
+    padding-bottom: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1127 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-medium.x-segmented-button-middle {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1129 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-medium.x-segmented-button-middle .x-btn-default-medium-mc {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1135 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-medium.x-segmented-button-last .x-btn-default-medium-mc {
+    padding-top: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1141 */
+.x-nbr .x-segmented-button-item.x-btn-default-medium:after {
+    content: ' ';
+    border-style: solid;
+    border-width: 0;
+    position: absolute;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1159 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-medium:after {
+    top: 1px;
+    right: 0;
+    bottom: 1px;
+    left: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1165 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-medium.x-segmented-button-first:after {
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1168 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-medium.x-segmented-button-last:after {
+    right: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1174 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-medium:after {
+    top: 0;
+    right: 1px;
+    bottom: 0;
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1180 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-medium.x-segmented-button-first:after {
+    top: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1183 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-medium.x-segmented-button-last:after {
+    bottom: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1190 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-default-medium:after {
+    border-width: 1px;
+    border-color: #cbe5f1;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1204 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-over.x-btn-default-medium:after {
+    border-width: 1px;
+    border-color: #cae2ed;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1219 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-menu-active.x-btn-default-medium:after,
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-pressed.x-btn-default-medium:after {
+    border-width: 1px;
+    border-color: #c8dce5;
 }
 /* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
 .x-btn-default-large {
@@ -3701,6 +3993,101 @@ body > .x-mask {
     -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)";
     opacity: 0.5;
 }
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1100 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-large.x-segmented-button-first {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1102 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-large.x-segmented-button-first .x-btn-default-large-mc {
+    padding-right: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1106 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-large.x-segmented-button-middle {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1108 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-large.x-segmented-button-middle .x-btn-default-large-mc {
+    padding-right: 9px !important;
+    padding-left: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1114 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-large.x-segmented-button-last .x-btn-default-large-mc {
+    padding-left: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1121 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-large.x-segmented-button-first {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1123 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-large.x-segmented-button-first .x-btn-default-large-mc {
+    padding-bottom: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1127 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-large.x-segmented-button-middle {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1129 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-large.x-segmented-button-middle .x-btn-default-large-mc {
+    padding-top: 9px !important;
+    padding-bottom: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1135 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-large.x-segmented-button-last .x-btn-default-large-mc {
+    padding-top: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1141 */
+.x-nbr .x-segmented-button-item.x-btn-default-large:after {
+    content: ' ';
+    border-style: solid;
+    border-width: 0;
+    position: absolute;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1159 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-large:after {
+    top: 1px;
+    right: 0;
+    bottom: 1px;
+    left: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1165 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-large.x-segmented-button-first:after {
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1168 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-large.x-segmented-button-last:after {
+    right: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1174 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-large:after {
+    top: 0;
+    right: 1px;
+    bottom: 0;
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1180 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-large.x-segmented-button-first:after {
+    top: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1183 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-large.x-segmented-button-last:after {
+    bottom: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1190 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-default-large:after {
+    border-width: 1px;
+    border-color: #cbe5f1;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1204 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-over.x-btn-default-large:after {
+    border-width: 1px;
+    border-color: #cae2ed;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1219 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-menu-active.x-btn-default-large:after,
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-pressed.x-btn-default-large:after {
+    border-width: 1px;
+    border-color: #c8dce5;
+}
 /* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
 .x-btn-default-toolbar-small {
     -webkit-border-radius: 0;
@@ -4106,6 +4493,101 @@ body > .x-mask {
 .x-btn-disabled.x-btn-default-toolbar-small {
     -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)";
     opacity: 0.5;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1100 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-small.x-segmented-button-first {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1102 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-small.x-segmented-button-first .x-btn-default-toolbar-small-mc {
+    padding-right: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1106 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-small.x-segmented-button-middle {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1108 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-small.x-segmented-button-middle .x-btn-default-toolbar-small-mc {
+    padding-right: 7px !important;
+    padding-left: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1114 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-small.x-segmented-button-last .x-btn-default-toolbar-small-mc {
+    padding-left: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1121 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-small.x-segmented-button-first {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1123 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-small.x-segmented-button-first .x-btn-default-toolbar-small-mc {
+    padding-bottom: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1127 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-small.x-segmented-button-middle {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1129 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-small.x-segmented-button-middle .x-btn-default-toolbar-small-mc {
+    padding-top: 7px !important;
+    padding-bottom: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1135 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-small.x-segmented-button-last .x-btn-default-toolbar-small-mc {
+    padding-top: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1141 */
+.x-nbr .x-segmented-button-item.x-btn-default-toolbar-small:after {
+    content: ' ';
+    border-style: solid;
+    border-width: 0;
+    position: absolute;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1159 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-small:after {
+    top: 1px;
+    right: 0;
+    bottom: 1px;
+    left: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1165 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-small.x-segmented-button-first:after {
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1168 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-small.x-segmented-button-last:after {
+    right: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1174 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-small:after {
+    top: 0;
+    right: 1px;
+    bottom: 0;
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1180 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-small.x-segmented-button-first:after {
+    top: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1183 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-small.x-segmented-button-last:after {
+    bottom: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1190 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-default-toolbar-small:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1204 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-over.x-btn-default-toolbar-small:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1219 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-menu-active.x-btn-default-toolbar-small:after,
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-pressed.x-btn-default-toolbar-small:after {
+    border-width: 1px;
+    border-color: #35baf6;
 }
 /* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
 .x-btn-default-toolbar-medium {
@@ -4513,6 +4995,101 @@ body > .x-mask {
     -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)";
     opacity: 0.5;
 }
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1100 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-medium.x-segmented-button-first {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1102 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-medium.x-segmented-button-first .x-btn-default-toolbar-medium-mc {
+    padding-right: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1106 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-medium.x-segmented-button-middle {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1108 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-medium.x-segmented-button-middle .x-btn-default-toolbar-medium-mc {
+    padding-right: 8px !important;
+    padding-left: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1114 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-medium.x-segmented-button-last .x-btn-default-toolbar-medium-mc {
+    padding-left: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1121 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-medium.x-segmented-button-first {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1123 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-medium.x-segmented-button-first .x-btn-default-toolbar-medium-mc {
+    padding-bottom: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1127 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-medium.x-segmented-button-middle {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1129 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-medium.x-segmented-button-middle .x-btn-default-toolbar-medium-mc {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1135 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-medium.x-segmented-button-last .x-btn-default-toolbar-medium-mc {
+    padding-top: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1141 */
+.x-nbr .x-segmented-button-item.x-btn-default-toolbar-medium:after {
+    content: ' ';
+    border-style: solid;
+    border-width: 0;
+    position: absolute;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1159 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-medium:after {
+    top: 1px;
+    right: 0;
+    bottom: 1px;
+    left: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1165 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-medium.x-segmented-button-first:after {
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1168 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-medium.x-segmented-button-last:after {
+    right: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1174 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-medium:after {
+    top: 0;
+    right: 1px;
+    bottom: 0;
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1180 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-medium.x-segmented-button-first:after {
+    top: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1183 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-medium.x-segmented-button-last:after {
+    bottom: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1190 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-default-toolbar-medium:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1204 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-over.x-btn-default-toolbar-medium:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1219 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-menu-active.x-btn-default-toolbar-medium:after,
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-pressed.x-btn-default-toolbar-medium:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
 /* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
 .x-btn-default-toolbar-large {
     -webkit-border-radius: 0;
@@ -4918,6 +5495,101 @@ body > .x-mask {
 .x-btn-disabled.x-btn-default-toolbar-large {
     -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)";
     opacity: 0.5;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1100 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-large.x-segmented-button-first {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1102 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-large.x-segmented-button-first .x-btn-default-toolbar-large-mc {
+    padding-right: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1106 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-large.x-segmented-button-middle {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1108 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-large.x-segmented-button-middle .x-btn-default-toolbar-large-mc {
+    padding-right: 9px !important;
+    padding-left: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1114 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-large.x-segmented-button-last .x-btn-default-toolbar-large-mc {
+    padding-left: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1121 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-large.x-segmented-button-first {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1123 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-large.x-segmented-button-first .x-btn-default-toolbar-large-mc {
+    padding-bottom: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1127 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-large.x-segmented-button-middle {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1129 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-large.x-segmented-button-middle .x-btn-default-toolbar-large-mc {
+    padding-top: 9px !important;
+    padding-bottom: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1135 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-large.x-segmented-button-last .x-btn-default-toolbar-large-mc {
+    padding-top: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1141 */
+.x-nbr .x-segmented-button-item.x-btn-default-toolbar-large:after {
+    content: ' ';
+    border-style: solid;
+    border-width: 0;
+    position: absolute;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1159 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-large:after {
+    top: 1px;
+    right: 0;
+    bottom: 1px;
+    left: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1165 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-large.x-segmented-button-first:after {
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1168 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-default-toolbar-large.x-segmented-button-last:after {
+    right: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1174 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-large:after {
+    top: 0;
+    right: 1px;
+    bottom: 0;
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1180 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-large.x-segmented-button-first:after {
+    top: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1183 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-default-toolbar-large.x-segmented-button-last:after {
+    bottom: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1190 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-default-toolbar-large:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1204 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-over.x-btn-default-toolbar-large:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1219 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-menu-active.x-btn-default-toolbar-large:after,
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-pressed.x-btn-default-toolbar-large:after {
+    border-width: 1px;
+    border-color: #35baf6;
 }
 /* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Tool.scss:1 */
 .x-tool {
@@ -13299,6 +13971,101 @@ a.x-color-picker-item:hover {
     -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)";
     opacity: 0.5;
 }
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1100 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-small.x-segmented-button-first {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1102 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-small.x-segmented-button-first .x-btn-plain-toolbar-small-mc {
+    padding-right: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1106 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-small.x-segmented-button-middle {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1108 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-small.x-segmented-button-middle .x-btn-plain-toolbar-small-mc {
+    padding-right: 7px !important;
+    padding-left: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1114 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-small.x-segmented-button-last .x-btn-plain-toolbar-small-mc {
+    padding-left: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1121 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-small.x-segmented-button-first {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1123 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-small.x-segmented-button-first .x-btn-plain-toolbar-small-mc {
+    padding-bottom: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1127 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-small.x-segmented-button-middle {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1129 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-small.x-segmented-button-middle .x-btn-plain-toolbar-small-mc {
+    padding-top: 7px !important;
+    padding-bottom: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1135 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-small.x-segmented-button-last .x-btn-plain-toolbar-small-mc {
+    padding-top: 7px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1141 */
+.x-nbr .x-segmented-button-item.x-btn-plain-toolbar-small:after {
+    content: ' ';
+    border-style: solid;
+    border-width: 0;
+    position: absolute;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1159 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-small:after {
+    top: 1px;
+    right: 0;
+    bottom: 1px;
+    left: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1165 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-small.x-segmented-button-first:after {
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1168 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-small.x-segmented-button-last:after {
+    right: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1174 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-small:after {
+    top: 0;
+    right: 1px;
+    bottom: 0;
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1180 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-small.x-segmented-button-first:after {
+    top: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1183 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-small.x-segmented-button-last:after {
+    bottom: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1190 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-plain-toolbar-small:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1204 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-over.x-btn-plain-toolbar-small:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1219 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-menu-active.x-btn-plain-toolbar-small:after,
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-pressed.x-btn-plain-toolbar-small:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
 /* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
 .x-btn-plain-toolbar-medium {
     -webkit-border-radius: 0;
@@ -13687,6 +14454,101 @@ a.x-color-picker-item:hover {
 .x-btn-disabled.x-btn-plain-toolbar-medium {
     -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)";
     opacity: 0.5;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1100 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-medium.x-segmented-button-first {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1102 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-medium.x-segmented-button-first .x-btn-plain-toolbar-medium-mc {
+    padding-right: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1106 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-medium.x-segmented-button-middle {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1108 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-medium.x-segmented-button-middle .x-btn-plain-toolbar-medium-mc {
+    padding-right: 8px !important;
+    padding-left: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1114 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-medium.x-segmented-button-last .x-btn-plain-toolbar-medium-mc {
+    padding-left: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1121 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-medium.x-segmented-button-first {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1123 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-medium.x-segmented-button-first .x-btn-plain-toolbar-medium-mc {
+    padding-bottom: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1127 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-medium.x-segmented-button-middle {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1129 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-medium.x-segmented-button-middle .x-btn-plain-toolbar-medium-mc {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1135 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-medium.x-segmented-button-last .x-btn-plain-toolbar-medium-mc {
+    padding-top: 8px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1141 */
+.x-nbr .x-segmented-button-item.x-btn-plain-toolbar-medium:after {
+    content: ' ';
+    border-style: solid;
+    border-width: 0;
+    position: absolute;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1159 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-medium:after {
+    top: 1px;
+    right: 0;
+    bottom: 1px;
+    left: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1165 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-medium.x-segmented-button-first:after {
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1168 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-medium.x-segmented-button-last:after {
+    right: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1174 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-medium:after {
+    top: 0;
+    right: 1px;
+    bottom: 0;
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1180 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-medium.x-segmented-button-first:after {
+    top: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1183 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-medium.x-segmented-button-last:after {
+    bottom: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1190 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-plain-toolbar-medium:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1204 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-over.x-btn-plain-toolbar-medium:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1219 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-menu-active.x-btn-plain-toolbar-medium:after,
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-pressed.x-btn-plain-toolbar-medium:after {
+    border-width: 1px;
+    border-color: #35baf6;
 }
 /* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
 .x-btn-plain-toolbar-large {
@@ -14077,6 +14939,101 @@ a.x-color-picker-item:hover {
     -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)";
     opacity: 0.5;
 }
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1100 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-large.x-segmented-button-first {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1102 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-large.x-segmented-button-first .x-btn-plain-toolbar-large-mc {
+    padding-right: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1106 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-large.x-segmented-button-middle {
+    border-right-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1108 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-large.x-segmented-button-middle .x-btn-plain-toolbar-large-mc {
+    padding-right: 9px !important;
+    padding-left: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1114 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-large.x-segmented-button-last .x-btn-plain-toolbar-large-mc {
+    padding-left: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1121 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-large.x-segmented-button-first {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1123 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-large.x-segmented-button-first .x-btn-plain-toolbar-large-mc {
+    padding-bottom: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1127 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-large.x-segmented-button-middle {
+    border-bottom-width: 1px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1129 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-large.x-segmented-button-middle .x-btn-plain-toolbar-large-mc {
+    padding-top: 9px !important;
+    padding-bottom: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1135 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-large.x-segmented-button-last .x-btn-plain-toolbar-large-mc {
+    padding-top: 9px !important;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1141 */
+.x-nbr .x-segmented-button-item.x-btn-plain-toolbar-large:after {
+    content: ' ';
+    border-style: solid;
+    border-width: 0;
+    position: absolute;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1159 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-large:after {
+    top: 1px;
+    right: 0;
+    bottom: 1px;
+    left: 0;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1165 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-large.x-segmented-button-first:after {
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1168 */
+.x-nbr .x-segmented-button-item-horizontal.x-btn-plain-toolbar-large.x-segmented-button-last:after {
+    right: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1174 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-large:after {
+    top: 0;
+    right: 1px;
+    bottom: 0;
+    left: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1180 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-large.x-segmented-button-first:after {
+    top: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1183 */
+.x-nbr .x-segmented-button-item-vertical.x-btn-plain-toolbar-large.x-segmented-button-last:after {
+    bottom: 1px;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1190 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-plain-toolbar-large:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1204 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-over.x-btn-plain-toolbar-large:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
+/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/button/Button.scss:1219 */
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-menu-active.x-btn-plain-toolbar-large:after,
+.x-nbr .x-segmented-button-item.x-btn-focus.x-btn-pressed.x-btn-plain-toolbar-large:after {
+    border-width: 1px;
+    border-color: #35baf6;
+}
 /* /usr/share/nginx/html/dev/ext/classic/theme-neptune/sass/src/button/Button.scss:220 */
 .x-btn-plain-toolbar-small-disabled .x-btn-icon-el,
 .x-btn-plain-toolbar-medium-disabled .x-btn-icon-el,
@@ -14352,867 +15309,4 @@ a.x-color-picker-item:hover {
     border-right-width: 1px !important;
     border-left-color: #d0d0d0 !important;
     border-left-width: 1px !important;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/border-management.scss:78 */
-.x-panel-light-outer-border-trb {
-    border-top-color: #d0d0d0 !important;
-    border-top-width: 1px !important;
-    border-right-color: #d0d0d0 !important;
-    border-right-width: 1px !important;
-    border-bottom-color: #d0d0d0 !important;
-    border-bottom-width: 1px !important;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/border-management.scss:86 */
-.x-panel-light-outer-border-trbl {
-    border-color: #d0d0d0 !important;
-    border-width: 1px !important;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:276 */
-.x-panel-light-framed {
-    border-color: #d0d0d0;
-    padding: 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:282 */
-.x-panel-header-light-framed {
-    font-size: 16px;
-    border: 2px solid #d0d0d0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:289 */
-.x-panel-header-light-framed .x-tool-img {
-    color: #919191;
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:306 */
-.x-panel-header-light-framed-horizontal {
-    padding: 10px 14px 10px 14px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:310 */
-.x-panel-header-light-framed-horizontal .x-panel-header-light-framed-tab-bar {
-    margin-top: -10px;
-    margin-bottom: -10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:318 */
-.x-panel-header-light-framed-horizontal.x-header-noborder {
-    padding: 12px 16px 10px 16px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:322 */
-.x-panel-header-light-framed-horizontal.x-header-noborder .x-panel-header-light-framed-tab-bar {
-    margin-top: -12px;
-    margin-bottom: -10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:330 */
-.x-panel-header-light-framed-vertical {
-    padding: 14px 10px 14px 10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:334 */
-.x-panel-header-light-framed-vertical .x-panel-header-light-framed-tab-bar {
-    margin-right: -10px;
-    margin-left: -10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:342 */
-.x-panel-header-light-framed-vertical.x-header-noborder {
-    padding: 16px 12px 16px 10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:346 */
-.x-panel-header-light-framed-vertical.x-header-noborder .x-panel-header-light-framed-tab-bar {
-    margin-right: -12px;
-    margin-left: -10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:380 */
-.x-panel-header-title-light-framed {
-    color: #606060;
-    font-size: 16px;
-    font-weight: 500;
-    font-family: 'Open Sans', 'Helvetica Neue', helvetica, arial, verdana, sans-serif;
-    line-height: 20px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:393 */
-.x-panel-header-title-light-framed > .x-title-text-light-framed {
-    text-transform: none;
-    padding: 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:440 */
-.x-panel-header-title-light-framed > .x-title-icon-wrap-light-framed.x-title-icon-top {
-    height: 24px;
-    padding-bottom: 8px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:445 */
-.x-panel-header-title-light-framed > .x-title-icon-wrap-light-framed.x-title-icon-right {
-    width: 24px;
-    padding-left: 8px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:457 */
-.x-panel-header-title-light-framed > .x-title-icon-wrap-light-framed.x-title-icon-bottom {
-    height: 24px;
-    padding-top: 8px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:462 */
-.x-panel-header-title-light-framed > .x-title-icon-wrap-light-framed.x-title-icon-left {
-    width: 24px;
-    padding-right: 8px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:474 */
-.x-panel-header-title-light-framed > .x-title-icon-wrap-light-framed > .x-title-icon-light-framed {
-    width: 16px;
-    height: 16px;
-    font-size: 16px;
-    color: #606060;
-    background-position: center center;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:493 */
-.x-ie8 .x-panel-header-title-light-framed > .x-title-icon-wrap-light-framed > .x-title-icon-light-framed {
-    color: #606060;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-neutral/sass/src/panel/Panel.scss:503 */
-.x-panel-body-light-framed {
-    background: #fff;
-    border-color: #d0d0d0;
-    color: #404040;
-    font-size: 13px;
-    font-weight: 400;
-    font-family: 'Open Sans', 'Helvetica Neue', helvetica, arial, verdana, sans-serif;
-    border-width: 1px;
-    border-style: solid;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
-.x-panel-light-framed {
-    -moz-border-radius-topleft: 0;
-    -webkit-border-top-left-radius: 0;
-    border-top-left-radius: 0;
-    -moz-border-radius-topright: 0;
-    -webkit-border-top-right-radius: 0;
-    border-top-right-radius: 0;
-    -moz-border-radius-bottomright: 0;
-    -webkit-border-bottom-right-radius: 0;
-    border-bottom-right-radius: 0;
-    -moz-border-radius-bottomleft: 0;
-    -webkit-border-bottom-left-radius: 0;
-    border-bottom-left-radius: 0;
-    padding: 0 0 0 0;
-    border-width: 2px;
-    border-style: solid;
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:237 */
-.x-panel-light-framed-mc {
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:264 */
-.x-nbr .x-panel-light-framed {
-    padding: 0 !important;
-    border-width: 0 !important;
-    -webkit-border-radius: 0px;
-    -moz-border-radius: 0px;
-    -ms-border-radius: 0px;
-    border-radius: 0px;
-    background-color: transparent !important;
-    box-shadow: none !important;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:281 */
-.x-panel-light-framed-frameInfo {
-    font-family: dh-2-2-2-2-2-2-2-2-0px-0px-0px-0px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:347 */
-.x-panel-light-framed-tl {
-    background-position: 0 -4px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:351 */
-.x-panel-light-framed-tr {
-    background-position: right -6px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:355 */
-.x-panel-light-framed-bl {
-    background-position: 0 -8px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:359 */
-.x-panel-light-framed-br {
-    background-position: right -10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:363 */
-.x-panel-light-framed-ml {
-    background-position: 0 top;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:371 */
-.x-panel-light-framed-mr {
-    background-position: right top;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:379 */
-.x-panel-light-framed-tc {
-    background-position: 0 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:383 */
-.x-panel-light-framed-bc {
-    background-position: 0 -2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:388 */
-.x-panel-light-framed-tr,
-.x-panel-light-framed-br,
-.x-panel-light-framed-mr {
-    padding-right: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:394 */
-.x-panel-light-framed-tl,
-.x-panel-light-framed-bl,
-.x-panel-light-framed-ml {
-    padding-left: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:400 */
-.x-panel-light-framed-tc {
-    height: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:403 */
-.x-panel-light-framed-bc {
-    height: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:407 */
-.x-panel-light-framed-tl,
-.x-panel-light-framed-bl,
-.x-panel-light-framed-tr,
-.x-panel-light-framed-br,
-.x-panel-light-framed-tc,
-.x-panel-light-framed-bc,
-.x-panel-light-framed-ml,
-.x-panel-light-framed-mr {
-    background-image: url(images/panel/panel-light-framed-corners.gif);
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:453 */
-.x-panel-light-framed-ml,
-.x-panel-light-framed-mr {
-    background-image: url(images/panel/panel-light-framed-sides.gif);
-    background-repeat: repeat-y;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:464 */
-.x-panel-light-framed-mc {
-    padding: 0px 0px 0px 0px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
-.x-panel-header-light-framed-top {
-    -moz-border-radius-topleft: 0;
-    -webkit-border-top-left-radius: 0;
-    border-top-left-radius: 0;
-    -moz-border-radius-topright: 0;
-    -webkit-border-top-right-radius: 0;
-    border-top-right-radius: 0;
-    -moz-border-radius-bottomright: 0;
-    -webkit-border-bottom-right-radius: 0;
-    border-bottom-right-radius: 0;
-    -moz-border-radius-bottomleft: 0;
-    -webkit-border-bottom-left-radius: 0;
-    border-bottom-left-radius: 0;
-    padding: 10px 14px 10px 14px;
-    border-width: 2px 2px 0 2px;
-    border-style: solid;
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:237 */
-.x-panel-header-light-framed-top-mc {
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:264 */
-.x-nbr .x-panel-header-light-framed-top {
-    padding: 0 !important;
-    border-width: 0 !important;
-    -webkit-border-radius: 0px;
-    -moz-border-radius: 0px;
-    -ms-border-radius: 0px;
-    border-radius: 0px;
-    background-color: transparent !important;
-    box-shadow: none !important;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:281 */
-.x-panel-header-light-framed-top-frameInfo {
-    font-family: dh-2-2-0-2-2-2-0-2-10-14-10-14;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:347 */
-.x-panel-header-light-framed-top-tl {
-    background-position: 0 -4px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:351 */
-.x-panel-header-light-framed-top-tr {
-    background-position: right -6px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:355 */
-.x-panel-header-light-framed-top-bl {
-    background-position: 0 -8px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:359 */
-.x-panel-header-light-framed-top-br {
-    background-position: right -10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:363 */
-.x-panel-header-light-framed-top-ml {
-    background-position: 0 top;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:371 */
-.x-panel-header-light-framed-top-mr {
-    background-position: right top;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:379 */
-.x-panel-header-light-framed-top-tc {
-    background-position: 0 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:383 */
-.x-panel-header-light-framed-top-bc {
-    background-position: 0 -2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:388 */
-.x-panel-header-light-framed-top-tr,
-.x-panel-header-light-framed-top-br,
-.x-panel-header-light-framed-top-mr {
-    padding-right: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:394 */
-.x-panel-header-light-framed-top-tl,
-.x-panel-header-light-framed-top-bl,
-.x-panel-header-light-framed-top-ml {
-    padding-left: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:400 */
-.x-panel-header-light-framed-top-tc {
-    height: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:403 */
-.x-panel-header-light-framed-top-bc {
-    height: 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:407 */
-.x-panel-header-light-framed-top-tl,
-.x-panel-header-light-framed-top-bl,
-.x-panel-header-light-framed-top-tr,
-.x-panel-header-light-framed-top-br,
-.x-panel-header-light-framed-top-tc,
-.x-panel-header-light-framed-top-bc,
-.x-panel-header-light-framed-top-ml,
-.x-panel-header-light-framed-top-mr {
-    background-image: url(images/panel-header/panel-header-light-framed-top-corners.gif);
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:453 */
-.x-panel-header-light-framed-top-ml,
-.x-panel-header-light-framed-top-mr {
-    background-image: url(images/panel-header/panel-header-light-framed-top-sides.gif);
-    background-repeat: repeat-y;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:464 */
-.x-panel-header-light-framed-top-mc {
-    padding: 10px 14px 10px 14px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
-.x-panel-header-light-framed-right {
-    -moz-border-radius-topleft: 0;
-    -webkit-border-top-left-radius: 0;
-    border-top-left-radius: 0;
-    -moz-border-radius-topright: 0;
-    -webkit-border-top-right-radius: 0;
-    border-top-right-radius: 0;
-    -moz-border-radius-bottomright: 0;
-    -webkit-border-bottom-right-radius: 0;
-    border-bottom-right-radius: 0;
-    -moz-border-radius-bottomleft: 0;
-    -webkit-border-bottom-left-radius: 0;
-    border-bottom-left-radius: 0;
-    padding: 14px 10px 14px 10px;
-    border-width: 2px 2px 2px 0;
-    border-style: solid;
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:237 */
-.x-panel-header-light-framed-right-mc {
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:264 */
-.x-nbr .x-panel-header-light-framed-right {
-    padding: 0 !important;
-    border-width: 0 !important;
-    -webkit-border-radius: 0px;
-    -moz-border-radius: 0px;
-    -ms-border-radius: 0px;
-    border-radius: 0px;
-    background-color: transparent !important;
-    box-shadow: none !important;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:281 */
-.x-panel-header-light-framed-right-frameInfo {
-    font-family: dh-2-2-2-0-2-2-2-0-14-10-14-10;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:347 */
-.x-panel-header-light-framed-right-tl {
-    background-position: 0 -4px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:351 */
-.x-panel-header-light-framed-right-tr {
-    background-position: right -6px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:355 */
-.x-panel-header-light-framed-right-bl {
-    background-position: 0 -8px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:359 */
-.x-panel-header-light-framed-right-br {
-    background-position: right -10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:363 */
-.x-panel-header-light-framed-right-ml {
-    background-position: right 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:371 */
-.x-panel-header-light-framed-right-mr {
-    background-position: right 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:379 */
-.x-panel-header-light-framed-right-tc {
-    background-position: 0 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:383 */
-.x-panel-header-light-framed-right-bc {
-    background-position: 0 -2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:388 */
-.x-panel-header-light-framed-right-tr,
-.x-panel-header-light-framed-right-br,
-.x-panel-header-light-framed-right-mr {
-    padding-right: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:394 */
-.x-panel-header-light-framed-right-tl,
-.x-panel-header-light-framed-right-bl,
-.x-panel-header-light-framed-right-ml {
-    padding-left: 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:400 */
-.x-panel-header-light-framed-right-tc {
-    height: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:403 */
-.x-panel-header-light-framed-right-bc {
-    height: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:407 */
-.x-panel-header-light-framed-right-tl,
-.x-panel-header-light-framed-right-bl,
-.x-panel-header-light-framed-right-tr,
-.x-panel-header-light-framed-right-br,
-.x-panel-header-light-framed-right-tc,
-.x-panel-header-light-framed-right-bc,
-.x-panel-header-light-framed-right-ml,
-.x-panel-header-light-framed-right-mr {
-    background-image: url(images/panel-header/panel-header-light-framed-right-corners.gif);
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:453 */
-.x-panel-header-light-framed-right-ml,
-.x-panel-header-light-framed-right-mr {
-    background-image: url(images/panel-header/panel-header-light-framed-right-sides.gif);
-    background-repeat: repeat-y;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:464 */
-.x-panel-header-light-framed-right-mc {
-    padding: 14px 10px 14px 10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
-.x-panel-header-light-framed-bottom {
-    -moz-border-radius-topleft: 0;
-    -webkit-border-top-left-radius: 0;
-    border-top-left-radius: 0;
-    -moz-border-radius-topright: 0;
-    -webkit-border-top-right-radius: 0;
-    border-top-right-radius: 0;
-    -moz-border-radius-bottomright: 0;
-    -webkit-border-bottom-right-radius: 0;
-    border-bottom-right-radius: 0;
-    -moz-border-radius-bottomleft: 0;
-    -webkit-border-bottom-left-radius: 0;
-    border-bottom-left-radius: 0;
-    padding: 10px 14px 10px 14px;
-    border-width: 0 2px 2px 2px;
-    border-style: solid;
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:237 */
-.x-panel-header-light-framed-bottom-mc {
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:264 */
-.x-nbr .x-panel-header-light-framed-bottom {
-    padding: 0 !important;
-    border-width: 0 !important;
-    -webkit-border-radius: 0px;
-    -moz-border-radius: 0px;
-    -ms-border-radius: 0px;
-    border-radius: 0px;
-    background-color: transparent !important;
-    box-shadow: none !important;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:281 */
-.x-panel-header-light-framed-bottom-frameInfo {
-    font-family: dh-0-2-2-2-0-2-2-2-10-14-10-14;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:347 */
-.x-panel-header-light-framed-bottom-tl {
-    background-position: 0 -4px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:351 */
-.x-panel-header-light-framed-bottom-tr {
-    background-position: right -6px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:355 */
-.x-panel-header-light-framed-bottom-bl {
-    background-position: 0 -8px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:359 */
-.x-panel-header-light-framed-bottom-br {
-    background-position: right -10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:363 */
-.x-panel-header-light-framed-bottom-ml {
-    background-position: 0 bottom;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:371 */
-.x-panel-header-light-framed-bottom-mr {
-    background-position: right bottom;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:379 */
-.x-panel-header-light-framed-bottom-tc {
-    background-position: 0 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:383 */
-.x-panel-header-light-framed-bottom-bc {
-    background-position: 0 -2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:388 */
-.x-panel-header-light-framed-bottom-tr,
-.x-panel-header-light-framed-bottom-br,
-.x-panel-header-light-framed-bottom-mr {
-    padding-right: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:394 */
-.x-panel-header-light-framed-bottom-tl,
-.x-panel-header-light-framed-bottom-bl,
-.x-panel-header-light-framed-bottom-ml {
-    padding-left: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:400 */
-.x-panel-header-light-framed-bottom-tc {
-    height: 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:403 */
-.x-panel-header-light-framed-bottom-bc {
-    height: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:407 */
-.x-panel-header-light-framed-bottom-tl,
-.x-panel-header-light-framed-bottom-bl,
-.x-panel-header-light-framed-bottom-tr,
-.x-panel-header-light-framed-bottom-br,
-.x-panel-header-light-framed-bottom-tc,
-.x-panel-header-light-framed-bottom-bc,
-.x-panel-header-light-framed-bottom-ml,
-.x-panel-header-light-framed-bottom-mr {
-    background-image: url(images/panel-header/panel-header-light-framed-bottom-corners.gif);
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:453 */
-.x-panel-header-light-framed-bottom-ml,
-.x-panel-header-light-framed-bottom-mr {
-    background-image: url(images/panel-header/panel-header-light-framed-bottom-sides.gif);
-    background-repeat: repeat-y;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:464 */
-.x-panel-header-light-framed-bottom-mc {
-    padding: 10px 14px 10px 14px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
-.x-panel-header-light-framed-left {
-    -moz-border-radius-topleft: 0;
-    -webkit-border-top-left-radius: 0;
-    border-top-left-radius: 0;
-    -moz-border-radius-topright: 0;
-    -webkit-border-top-right-radius: 0;
-    border-top-right-radius: 0;
-    -moz-border-radius-bottomright: 0;
-    -webkit-border-bottom-right-radius: 0;
-    border-bottom-right-radius: 0;
-    -moz-border-radius-bottomleft: 0;
-    -webkit-border-bottom-left-radius: 0;
-    border-bottom-left-radius: 0;
-    padding: 14px 10px 14px 10px;
-    border-width: 2px 0 2px 2px;
-    border-style: solid;
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:237 */
-.x-panel-header-light-framed-left-mc {
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:264 */
-.x-nbr .x-panel-header-light-framed-left {
-    padding: 0 !important;
-    border-width: 0 !important;
-    -webkit-border-radius: 0px;
-    -moz-border-radius: 0px;
-    -ms-border-radius: 0px;
-    border-radius: 0px;
-    background-color: transparent !important;
-    box-shadow: none !important;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:281 */
-.x-panel-header-light-framed-left-frameInfo {
-    font-family: dh-2-0-2-2-2-0-2-2-14-10-14-10;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:347 */
-.x-panel-header-light-framed-left-tl {
-    background-position: 0 -4px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:351 */
-.x-panel-header-light-framed-left-tr {
-    background-position: right -6px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:355 */
-.x-panel-header-light-framed-left-bl {
-    background-position: 0 -8px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:359 */
-.x-panel-header-light-framed-left-br {
-    background-position: right -10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:363 */
-.x-panel-header-light-framed-left-ml {
-    background-position: left 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:371 */
-.x-panel-header-light-framed-left-mr {
-    background-position: left 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:379 */
-.x-panel-header-light-framed-left-tc {
-    background-position: 0 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:383 */
-.x-panel-header-light-framed-left-bc {
-    background-position: 0 -2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:388 */
-.x-panel-header-light-framed-left-tr,
-.x-panel-header-light-framed-left-br,
-.x-panel-header-light-framed-left-mr {
-    padding-right: 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:394 */
-.x-panel-header-light-framed-left-tl,
-.x-panel-header-light-framed-left-bl,
-.x-panel-header-light-framed-left-ml {
-    padding-left: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:400 */
-.x-panel-header-light-framed-left-tc {
-    height: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:403 */
-.x-panel-header-light-framed-left-bc {
-    height: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:407 */
-.x-panel-header-light-framed-left-tl,
-.x-panel-header-light-framed-left-bl,
-.x-panel-header-light-framed-left-tr,
-.x-panel-header-light-framed-left-br,
-.x-panel-header-light-framed-left-tc,
-.x-panel-header-light-framed-left-bc,
-.x-panel-header-light-framed-left-ml,
-.x-panel-header-light-framed-left-mr {
-    background-image: url(images/panel-header/panel-header-light-framed-left-corners.gif);
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:453 */
-.x-panel-header-light-framed-left-ml,
-.x-panel-header-light-framed-left-mr {
-    background-image: url(images/panel-header/panel-header-light-framed-left-sides.gif);
-    background-repeat: repeat-y;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:464 */
-.x-panel-header-light-framed-left-mc {
-    padding: 14px 10px 14px 10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
-.x-panel-header-light-framed-collapsed-top {
-    -moz-border-radius-topleft: 0;
-    -webkit-border-top-left-radius: 0;
-    border-top-left-radius: 0;
-    -moz-border-radius-topright: 0;
-    -webkit-border-top-right-radius: 0;
-    border-top-right-radius: 0;
-    -moz-border-radius-bottomright: 0;
-    -webkit-border-bottom-right-radius: 0;
-    border-bottom-right-radius: 0;
-    -moz-border-radius-bottomleft: 0;
-    -webkit-border-bottom-left-radius: 0;
-    border-bottom-left-radius: 0;
-    padding: 10px 14px 10px 14px;
-    border-width: 2px;
-    border-style: solid;
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:237 */
-.x-panel-header-light-framed-collapsed-top-mc {
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:264 */
-.x-nbr .x-panel-header-light-framed-collapsed-top {
-    padding: 0 !important;
-    border-width: 0 !important;
-    -webkit-border-radius: 0px;
-    -moz-border-radius: 0px;
-    -ms-border-radius: 0px;
-    border-radius: 0px;
-    background-color: transparent !important;
-    box-shadow: none !important;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:281 */
-.x-panel-header-light-framed-collapsed-top-frameInfo {
-    font-family: dh-2-2-2-2-2-2-2-2-10-14-10-14;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:347 */
-.x-panel-header-light-framed-collapsed-top-tl {
-    background-position: 0 -4px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:351 */
-.x-panel-header-light-framed-collapsed-top-tr {
-    background-position: right -6px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:355 */
-.x-panel-header-light-framed-collapsed-top-bl {
-    background-position: 0 -8px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:359 */
-.x-panel-header-light-framed-collapsed-top-br {
-    background-position: right -10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:363 */
-.x-panel-header-light-framed-collapsed-top-ml {
-    background-position: 0 top;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:371 */
-.x-panel-header-light-framed-collapsed-top-mr {
-    background-position: right top;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:379 */
-.x-panel-header-light-framed-collapsed-top-tc {
-    background-position: 0 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:383 */
-.x-panel-header-light-framed-collapsed-top-bc {
-    background-position: 0 -2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:388 */
-.x-panel-header-light-framed-collapsed-top-tr,
-.x-panel-header-light-framed-collapsed-top-br,
-.x-panel-header-light-framed-collapsed-top-mr {
-    padding-right: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:394 */
-.x-panel-header-light-framed-collapsed-top-tl,
-.x-panel-header-light-framed-collapsed-top-bl,
-.x-panel-header-light-framed-collapsed-top-ml {
-    padding-left: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:400 */
-.x-panel-header-light-framed-collapsed-top-tc {
-    height: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:403 */
-.x-panel-header-light-framed-collapsed-top-bc {
-    height: 2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:407 */
-.x-panel-header-light-framed-collapsed-top-tl,
-.x-panel-header-light-framed-collapsed-top-bl,
-.x-panel-header-light-framed-collapsed-top-tr,
-.x-panel-header-light-framed-collapsed-top-br,
-.x-panel-header-light-framed-collapsed-top-tc,
-.x-panel-header-light-framed-collapsed-top-bc,
-.x-panel-header-light-framed-collapsed-top-ml,
-.x-panel-header-light-framed-collapsed-top-mr {
-    background-image: url(images/panel-header/panel-header-light-framed-collapsed-top-corners.gif);
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:453 */
-.x-panel-header-light-framed-collapsed-top-ml,
-.x-panel-header-light-framed-collapsed-top-mr {
-    background-image: url(images/panel-header/panel-header-light-framed-collapsed-top-sides.gif);
-    background-repeat: repeat-y;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:464 */
-.x-panel-header-light-framed-collapsed-top-mc {
-    padding: 10px 14px 10px 14px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:187 */
-.x-panel-header-light-framed-collapsed-right {
-    -moz-border-radius-topleft: 0;
-    -webkit-border-top-left-radius: 0;
-    border-top-left-radius: 0;
-    -moz-border-radius-topright: 0;
-    -webkit-border-top-right-radius: 0;
-    border-top-right-radius: 0;
-    -moz-border-radius-bottomright: 0;
-    -webkit-border-bottom-right-radius: 0;
-    border-bottom-right-radius: 0;
-    -moz-border-radius-bottomleft: 0;
-    -webkit-border-bottom-left-radius: 0;
-    border-bottom-left-radius: 0;
-    padding: 14px 10px 14px 10px;
-    border-width: 2px;
-    border-style: solid;
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:237 */
-.x-panel-header-light-framed-collapsed-right-mc {
-    background-color: #fff;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:264 */
-.x-nbr .x-panel-header-light-framed-collapsed-right {
-    padding: 0 !important;
-    border-width: 0 !important;
-    -webkit-border-radius: 0px;
-    -moz-border-radius: 0px;
-    -ms-border-radius: 0px;
-    border-radius: 0px;
-    background-color: transparent !important;
-    box-shadow: none !important;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:281 */
-.x-panel-header-light-framed-collapsed-right-frameInfo {
-    font-family: dh-2-2-2-2-2-2-2-2-14-10-14-10;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:347 */
-.x-panel-header-light-framed-collapsed-right-tl {
-    background-position: 0 -4px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:351 */
-.x-panel-header-light-framed-collapsed-right-tr {
-    background-position: right -6px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:355 */
-.x-panel-header-light-framed-collapsed-right-bl {
-    background-position: 0 -8px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:359 */
-.x-panel-header-light-framed-collapsed-right-br {
-    background-position: right -10px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:363 */
-.x-panel-header-light-framed-collapsed-right-ml {
-    background-position: right 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:371 */
-.x-panel-header-light-framed-collapsed-right-mr {
-    background-position: right 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:379 */
-.x-panel-header-light-framed-collapsed-right-tc {
-    background-position: 0 0;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:383 */
-.x-panel-header-light-framed-collapsed-right-bc {
-    background-position: 0 -2px;
-}
-/* /usr/share/nginx/html/dev/ext/classic/theme-base/sass/etc/mixins/frame.scss:388 */
-.x-panel-header-light-framed-collapsed-right-tr,
-.x-panel-header-light-framed-collapsed-right-br,
-.x-panel-header-light-framed-collapsed-right-mr {
-    padding-right: 2px;
 }

@@ -102,17 +102,8 @@ module.exports = function(sequelize, DataTypes) {
 		scopes: {
 			students: { where: { role: 1 } },
 			judges:   { where: { role: 2 } },
-<<<<<<< HEAD
-<<<<<<< HEAD
 			admins:   { where: { role: 3 } },
 			unregs:   { where: { role: 4 } }
-=======
-			admins:   { where: { role: 3 } }
->>>>>>> b4d4eb2f8b51bc3dc3b390db4f0548e4a1c8c84f
-=======
-			admins:   { where: { role: 3 } },
-			unregs:   { where: { role: 4 } }
->>>>>>> 57c573111bc8ac58e4d3b6be1aff92a294172f70
 		}
 	});
 
