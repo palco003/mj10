@@ -1,5 +1,5 @@
 #!/bin/bash
 cd ../../../..
-sencha app build classic testing
-sudo cp -r build/testing/* ../
+sencha app build
+sudo cp -r build/production/* ../
 cd classic/src/view/unregistered

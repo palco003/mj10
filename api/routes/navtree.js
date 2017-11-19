@@ -125,13 +125,6 @@ module.exports = function(server, db) {
                             routeId: 'home', // routeId defaults to viewType
                             leaf: true
                         },
-                        {
-                            text: 'Unregistered Judges',
-                            iconCls: 'x-fa fa-group',
-                            //viewType: 'unregistered',
-                            routeId: 'unregistered',
-                            leaf: true
-                        }
                     ]
                 });
                 break;

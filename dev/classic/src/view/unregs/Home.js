@@ -2,24 +2,23 @@ Ext.define('MobileJudge.view.unregs.Home', {
 	extend: 'Ext.container.Container',
 	xtype: 'unreghome',
 
-	requires: [
-		'Ext.ux.layout.ResponsiveColumn'
-	],
-
-	layout: 'responsivecolumn',
-	cls: 'userProfile-container',
-
 	controller: 'unregistered',
 	viewModel: {
-		data: {
-		}
+		type: 'unregistered'
 	},
 
 	items: [
 		{
-			// Always 100% of container
-			xtype: 'profile',
-			userCls: 'big-100 small-100 shadow'
+			xtype: 'container',
+			reference: 'wizard',
+			layout: 'card',
+			margin: 20,
+			items: [
+				{
+					xtype: 'unregjudges',
+					title: 'Judges',
+				},
+			]
 		}
 	]
 
